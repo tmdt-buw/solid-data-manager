@@ -5,7 +5,7 @@ import "../LoginScreen.css";
 
 export default function LoginScreen({ onLogin }) {
   const providers = [
-    { label: "TMDT Solid", url: "https://tmdt-solid-community-server.de", note: "Recommended" },
+    { label: "TMDT Solid", url: "https://solid-community-server.tmdt.info", note: "Recommended" },
     { label: "Solid Community", url: "https://solidcommunity.net", note: "Public community server" },
   ];
   const [selected, setSelected] = useState(providers[0].url);
@@ -37,7 +37,7 @@ export default function LoginScreen({ onLogin }) {
               <div className="guide-step">
                 <span className="step-num">1</span>
                 <p>
-                  Visit <a href="https://tmdt-solid-community-server.de" target="_blank" rel="noreferrer">tmdt-solid-community-server.de</a> or any other Solid Pod Provider.
+                  Visit <a href="https://solid-community-server.tmdt.info" target="_blank" rel="noreferrer">solid-community-server.tmdt.info</a> or any other Solid Pod Provider.
                 </p>
               </div>
               <div className="guide-step">
