@@ -130,7 +130,7 @@ const App = () => {
 
   if (!sessionActive) {
     return (
-      <div className="container">
+      <div className="standalone-login-page">
         <LoginScreen onLogin={loginToSolid} />
       </div>
     );

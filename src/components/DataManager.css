@@ -185,6 +185,29 @@
   margin-right: 0.6rem;
 }
 
+.file-name-action {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.file-name-action--folder {
+  cursor: pointer;
+}
+
+.file-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .file-icon.folder {
   color: #2563eb;
 }

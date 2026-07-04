@@ -285,15 +285,38 @@ function FilesView({
                         onRowSelect(item, index, event);
                       }}
                     >
-                      <td
-                        onClick={() => isFolder && navigateTo(url)}
-                        style={{ cursor: isFolder ? "pointer" : "default" }}
-                      >
-                        <FontAwesomeIcon
-                          icon={isFolder ? faFolder : faFile}
-                          className={`file-icon ${isFolder ? "folder" : "file"}`}
-                        />
-                        {name}
+                      <td>
+                        {isFolder ? (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            className="file-name-action file-name-action--folder"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              navigateTo(url);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter" && event.key !== " ") return;
+                              event.preventDefault();
+                              event.stopPropagation();
+                              navigateTo(url);
+                            }}
+                          >
+                            <FontAwesomeIcon
+                              icon={faFolder}
+                              className="file-icon folder"
+                            />
+                            <span className="file-name-text">{name}</span>
+                          </span>
+                        ) : (
+                          <span className="file-name-action">
+                            <FontAwesomeIcon
+                              icon={faFile}
+                              className="file-icon file"
+                            />
+                            <span className="file-name-text">{name}</span>
+                          </span>
+                        )}
                       </td>
                       <td>{getItemType(item)}</td>
                       <td>{formatBytes(size)}</td>
@@ -452,7 +475,7 @@ export default function DataManager({ webId, headerUser, onLogout }) {
     const root = new URL(rootUrl);
     const relative = url.pathname.replace(root.pathname, "");
     const parts = relative.split("/").filter(Boolean);
-    const crumbs = [{ name: "All files", url: rootUrl }];
+    const crumbs = [{ name: "Pod root", url: rootUrl }];
     parts.forEach((part, idx) => {
       const partUrl = rootUrl + parts.slice(0, idx + 1).join("/") + "/";
       crumbs.push({ name: decodeURIComponent(part), url: partUrl });
@@ -866,6 +889,11 @@ export default function DataManager({ webId, headerUser, onLogout }) {
                   else next.add(item.url);
                   lastSelectedIndexRef.current = index;
                 } else {
+                  if (next.has(item.url)) {
+                    next.delete(item.url);
+                    lastSelectedIndexRef.current = null;
+                    return next;
+                  }
                   next.clear();
                   next.add(item.url);
                   lastSelectedIndexRef.current = index;
