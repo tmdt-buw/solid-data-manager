@@ -1,6 +1,6 @@
 {
   "name": "@hoelk-f/solid-data-manager",
-  "version": "0.4.9",
+  "version": "0.4.11",
   "license": "Apache-2.0",
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.0.0",
@@ -63,8 +63,7 @@
   },
   "eslintConfig": {
     "extends": [
-      "react-app",
-      "react-app/jest"
+      "react-app"
     ]
   },
   "browserslist": {

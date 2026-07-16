@@ -10,6 +10,8 @@ import "./App.css";
 import DataManager from "./components/DataManager";
 import LoginScreen from "./components/LoginScreen";
 import FooterBar from "./components/FooterBar";
+import { I18nProvider, LanguageSelect } from "./i18n";
+import "./LanguageSelect.css";
 
 const VCARD_FN = "http://www.w3.org/2006/vcard/ns#fn";
 const VCARD_HAS_PHOTO = "http://www.w3.org/2006/vcard/ns#hasPhoto";
@@ -130,27 +132,33 @@ const App = () => {
 
   if (!sessionActive) {
     return (
-      <div className="standalone-login-page">
-        <LoginScreen onLogin={loginToSolid} />
-      </div>
+      <I18nProvider>
+        <div className="standalone-login-page">
+          <LanguageSelect className="language-select--standalone" />
+          <LoginScreen onLogin={loginToSolid} />
+        </div>
+      </I18nProvider>
     );
   }
 
   return (
-    <div className="container">
-      <DataManager
-        webId={webId}
-        headerUser={{
-          name: profile.name,
-          podHost: profile.podHost,
-          avatarUrl,
-          webId,
-        }}
-        onLogout={handleLogout}
-      />
-      <div className="footer-spacer" />
-      <FooterBar />
-    </div>
+    <I18nProvider>
+      <div className="container">
+        <LanguageSelect className="language-select--standalone" />
+        <DataManager
+          webId={webId}
+          headerUser={{
+            name: profile.name,
+            podHost: profile.podHost,
+            avatarUrl,
+            webId,
+          }}
+          onLogout={handleLogout}
+        />
+        <div className="footer-spacer" />
+        <FooterBar />
+      </div>
+    </I18nProvider>
   );
 };
 
