@@ -49,6 +49,24 @@ const enToDe = {
   "Share file": "Datei teilen",
   "Download failed.": "Download fehlgeschlagen.",
   "Delete failed.": "Löschen fehlgeschlagen.",
+  "Authentication required (401). Please log in again.":
+    "Anmeldung erforderlich (401). Bitte melden Sie sich erneut an.",
+  "Access denied (403). You do not have permission to open this folder.":
+    "Zugriff verweigert (403). Sie haben keine Berechtigung, diesen Ordner zu öffnen.",
+  "Access denied (403). You do not have permission to delete the selected items.":
+    "Zugriff verweigert (403). Sie haben keine Berechtigung, die ausgewählten Elemente zu löschen.",
+  "Folder not found (404). It may have been moved or deleted.":
+    "Ordner nicht gefunden (404). Er wurde möglicherweise verschoben oder gelöscht.",
+  "Delete failed (404). An item no longer exists.":
+    "Löschen fehlgeschlagen (404). Ein Element ist nicht mehr vorhanden.",
+  "Delete failed (409). The folder may not be empty.":
+    "Löschen fehlgeschlagen (409). Der Ordner ist möglicherweise nicht leer.",
+  "Delete stopped because a folder contains an invalid resource reference.":
+    "Löschen abgebrochen, weil ein Ordner einen ungültigen Ressourcenverweis enthält.",
+  "Delete failed. Please try again.":
+    "Löschen fehlgeschlagen. Bitte versuchen Sie es erneut.",
+  "Opening folder failed. Please try again or check your connection.":
+    "Ordner konnte nicht geöffnet werden. Bitte versuchen Sie es erneut oder prüfen Sie Ihre Verbindung.",
   "Rename failed.": "Umbenennen fehlgeschlagen.",
   "Upload failed.": "Upload fehlgeschlagen.",
   "Create folder failed.": "Ordner konnte nicht erstellt werden.",

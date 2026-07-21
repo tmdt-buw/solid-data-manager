@@ -1,0 +1,264 @@
+import React from "react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  deleteContainer,
+  deleteFile,
+  getContainedResourceUrlAll,
+  getSolidDataset,
+} from "@inrupt/solid-client";
+import session from "../solidSession";
+import DataManager from "./DataManager";
+
+jest.mock("@inrupt/solid-client", () => ({
+  getSolidDataset: jest.fn(),
+  getContainedResourceUrlAll: jest.fn(),
+  deleteFile: jest.fn(),
+  deleteContainer: jest.fn(),
+  createContainerAt: jest.fn(),
+  overwriteFile: jest.fn(),
+  getFileWithAcl: jest.fn(),
+  getSolidDatasetWithAcl: jest.fn(),
+  getResourceAcl: jest.fn(),
+  hasResourceAcl: jest.fn(),
+  hasAccessibleAcl: jest.fn(),
+  createAclFromFallbackAcl: jest.fn(),
+  setAgentResourceAccess: jest.fn(),
+  getAgentResourceAccessAll: jest.fn(),
+  saveAclFor: jest.fn(),
+}));
+
+jest.mock("../solidSession", () => ({
+  __esModule: true,
+  default: { fetch: jest.fn() },
+}));
+
+const WEB_ID = "https://pod.example/profile/card#me";
+const ROOT_URL = "https://pod.example/";
+const RESTRICTED_URL = `${ROOT_URL}restricted/`;
+
+function datasetWith(...contained) {
+  return { contained };
+}
+
+function mockHeadResponse() {
+  return {
+    headers: {
+      get: jest.fn(() => null),
+    },
+  };
+}
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+async function confirmSelectedItemsDelete() {
+  fireEvent.click(screen.getByTitle("Delete"));
+  const confirmMessage = await screen.findByText(
+    "This will permanently delete the selected items."
+  );
+  const confirmModal = confirmMessage.closest(".modal-box");
+  fireEvent.click(within(confirmModal).getByRole("button", { name: "Delete" }));
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  getContainedResourceUrlAll.mockImplementation((dataset) => dataset.contained || []);
+  session.fetch.mockResolvedValue(mockHeadResponse());
+});
+
+test("keeps the parent breadcrumb and listing when opening a folder returns 403", async () => {
+  getSolidDataset.mockImplementation((url) => {
+    if (url === ROOT_URL) return Promise.resolve(datasetWith(RESTRICTED_URL));
+    if (url === RESTRICTED_URL) return Promise.reject({ statusCode: 403 });
+    return Promise.reject(new Error(`Unexpected URL: ${url}`));
+  });
+
+  const { container } = render(<DataManager webId={WEB_ID} />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "restricted" }));
+
+  expect(
+    await screen.findByText(
+      "Access denied (403). You do not have permission to open this folder."
+    )
+  ).toBeInTheDocument();
+
+  const breadcrumb = container.querySelector(".data-manager-main .crumb");
+  expect(breadcrumb).toHaveTextContent("Pod root");
+  expect(breadcrumb).not.toHaveTextContent("restricted");
+  expect(screen.getByRole("button", { name: "restricted" })).toBeInTheDocument();
+});
+
+test("reports a static translatable message for an unexpected folder error", async () => {
+  getSolidDataset.mockImplementation((url) => {
+    if (url === ROOT_URL) return Promise.resolve(datasetWith(RESTRICTED_URL));
+    if (url === RESTRICTED_URL) {
+      return Promise.reject(new Error("Network connection lost"));
+    }
+    return Promise.reject(new Error(`Unexpected URL: ${url}`));
+  });
+
+  render(<DataManager webId={WEB_ID} />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "restricted" }));
+
+  expect(
+    await screen.findByText(
+      "Opening folder failed. Please try again or check your connection."
+    )
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/Network connection lost/)).not.toBeInTheDocument();
+});
+
+test("ignores a stale folder response after the WebID changes", async () => {
+  const nextWebId = "https://other-pod.example/profile/card#me";
+  const nextRootUrl = "https://other-pod.example/";
+  const nextItemUrl = `${nextRootUrl}current.txt`;
+  const staleItemUrl = `${RESTRICTED_URL}stale.txt`;
+  const staleRequest = deferred();
+
+  getSolidDataset.mockImplementation((url) => {
+    if (url === ROOT_URL) return Promise.resolve(datasetWith(RESTRICTED_URL));
+    if (url === RESTRICTED_URL) return staleRequest.promise;
+    if (url === nextRootUrl) return Promise.resolve(datasetWith(nextItemUrl));
+    return Promise.reject(new Error(`Unexpected URL: ${url}`));
+  });
+
+  const { rerender } = render(<DataManager webId={WEB_ID} />);
+  fireEvent.click(await screen.findByRole("button", { name: "restricted" }));
+
+  rerender(<DataManager webId={nextWebId} />);
+  expect(await screen.findByText("current.txt")).toBeInTheDocument();
+
+  await act(async () => {
+    staleRequest.resolve(datasetWith(staleItemUrl));
+    await staleRequest.promise;
+  });
+
+  expect(screen.getByText("current.txt")).toBeInTheDocument();
+  expect(screen.queryByText("stale.txt")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Opening folder failed. Please try again or check your connection.")
+  ).not.toBeInTheDocument();
+});
+
+test("does not delete a container when its contents cannot be read", async () => {
+  getSolidDataset.mockImplementation((url) => {
+    if (url === ROOT_URL) return Promise.resolve(datasetWith(RESTRICTED_URL));
+    if (url === RESTRICTED_URL) {
+      return Promise.reject({ response: { status: 403 } });
+    }
+    return Promise.reject(new Error(`Unexpected URL: ${url}`));
+  });
+
+  render(<DataManager webId={WEB_ID} />);
+
+  const folderName = await screen.findByText("restricted");
+  fireEvent.click(folderName.closest("tr"));
+  await confirmSelectedItemsDelete();
+
+  expect(
+    await screen.findByText(
+      "Access denied (403). You do not have permission to delete the selected items."
+    )
+  ).toBeInTheDocument();
+  await waitFor(() => {
+    const rootReads = getSolidDataset.mock.calls.filter(([url]) => url === ROOT_URL);
+    expect(rootReads).toHaveLength(2);
+  });
+  expect(deleteContainer).not.toHaveBeenCalled();
+  expect(deleteFile).not.toHaveBeenCalled();
+});
+
+test("reloads the parent after a later item fails following a successful delete", async () => {
+  const fileUrl = `${ROOT_URL}already-deleted.txt`;
+  let rootReads = 0;
+  getSolidDataset.mockImplementation((url) => {
+    if (url === ROOT_URL) {
+      rootReads += 1;
+      return Promise.resolve(
+        rootReads === 1
+          ? datasetWith(fileUrl, RESTRICTED_URL)
+          : datasetWith(RESTRICTED_URL)
+      );
+    }
+    if (url === RESTRICTED_URL) return Promise.reject({ statusCode: 403 });
+    return Promise.reject(new Error(`Unexpected URL: ${url}`));
+  });
+
+  render(<DataManager webId={WEB_ID} />);
+
+  const fileName = await screen.findByText("already-deleted.txt");
+  const folderName = screen.getByText("restricted");
+  fireEvent.click(fileName.closest("tr"));
+  fireEvent.click(folderName.closest("tr"), { ctrlKey: true });
+  await confirmSelectedItemsDelete();
+
+  expect(
+    await screen.findByText(
+      "Access denied (403). You do not have permission to delete the selected items."
+    )
+  ).toBeInTheDocument();
+  expect(deleteFile).toHaveBeenCalledWith(fileUrl, expect.any(Object));
+  expect(rootReads).toBe(2);
+  expect(screen.queryByText("already-deleted.txt")).not.toBeInTheDocument();
+  expect(screen.getByText("restricted")).toBeInTheDocument();
+});
+
+test.each([
+  ["another origin", "https://evil.example/secret.ttl"],
+  ["a same-origin sibling", `${ROOT_URL}outside/secret.ttl`],
+])("refuses to delete an ldp:contains target from %s", async (_label, unsafeUrl) => {
+  getSolidDataset.mockImplementation((url) => {
+    if (url === ROOT_URL) return Promise.resolve(datasetWith(RESTRICTED_URL));
+    if (url === RESTRICTED_URL) return Promise.resolve(datasetWith(unsafeUrl));
+    return Promise.reject(new Error(`Unexpected URL: ${url}`));
+  });
+
+  render(<DataManager webId={WEB_ID} />);
+
+  const folderName = await screen.findByText("restricted");
+  fireEvent.click(folderName.closest("tr"));
+  await confirmSelectedItemsDelete();
+
+  expect(
+    await screen.findByText(
+      "Delete stopped because a folder contains an invalid resource reference."
+    )
+  ).toBeInTheDocument();
+  expect(deleteFile).not.toHaveBeenCalled();
+  expect(deleteContainer).not.toHaveBeenCalled();
+});
+
+test("uses the visited set to delete duplicate contained resources only once", async () => {
+  const duplicateUrl = `${RESTRICTED_URL}duplicate.ttl`;
+  getSolidDataset.mockImplementation((url) => {
+    if (url === ROOT_URL) return Promise.resolve(datasetWith(RESTRICTED_URL));
+    if (url === RESTRICTED_URL) {
+      return Promise.resolve(datasetWith(duplicateUrl, duplicateUrl));
+    }
+    return Promise.reject(new Error(`Unexpected URL: ${url}`));
+  });
+
+  render(<DataManager webId={WEB_ID} />);
+
+  const folderName = await screen.findByText("restricted");
+  fireEvent.click(folderName.closest("tr"));
+  await confirmSelectedItemsDelete();
+
+  await waitFor(() => {
+    expect(deleteContainer).toHaveBeenCalledWith(RESTRICTED_URL, expect.any(Object));
+  });
+  expect(deleteFile).toHaveBeenCalledTimes(1);
+  expect(deleteFile).toHaveBeenCalledWith(duplicateUrl, expect.any(Object));
+  expect(deleteFile.mock.invocationCallOrder[0]).toBeLessThan(
+    deleteContainer.mock.invocationCallOrder[0]
+  );
+});

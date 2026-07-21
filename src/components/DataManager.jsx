@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   getSolidDataset,
   getContainedResourceUrlAll,
@@ -46,6 +46,87 @@ const noCacheFetch = (input, init = {}) =>
     cache: "no-store",
     headers: { ...(init.headers || {}), "Cache-Control": "no-cache" }
   });
+
+function getHttpStatus(error) {
+  const candidates = [
+    error?.statusCode,
+    error?.status,
+    error?.response?.status,
+  ];
+  const status = candidates
+    .map((candidate) => Number(candidate))
+    .find((candidate) => Number.isInteger(candidate) && candidate >= 100);
+  if (status) return status;
+
+  const match = String(error?.message || "").match(/\b([45]\d{2})\b/);
+  return match ? Number(match[1]) : null;
+}
+
+function formatResourceError(error, action) {
+  const status = getHttpStatus(error);
+  const isDelete = action === "delete";
+
+  if (error?.code === "UNSAFE_CONTAINED_RESOURCE") {
+    return "Delete stopped because a folder contains an invalid resource reference.";
+  }
+
+  if (status === 401) {
+    return "Authentication required (401). Please log in again.";
+  }
+  if (status === 403) {
+    return isDelete
+      ? "Access denied (403). You do not have permission to delete the selected items."
+      : "Access denied (403). You do not have permission to open this folder.";
+  }
+  if (status === 404) {
+    return isDelete
+      ? "Delete failed (404). An item no longer exists."
+      : "Folder not found (404). It may have been moved or deleted.";
+  }
+  if (status === 409 && isDelete) {
+    return "Delete failed (409). The folder may not be empty.";
+  }
+
+  return isDelete
+    ? "Delete failed. Please try again."
+    : "Opening folder failed. Please try again or check your connection.";
+}
+
+function isAbortError(error) {
+  return error?.name === "AbortError" || error?.code === "ABORT_ERR";
+}
+
+function unsafeContainedResourceError() {
+  const error = new Error("Unsafe ldp:contains resource reference.");
+  error.code = "UNSAFE_CONTAINED_RESOURCE";
+  return error;
+}
+
+function normalizeDeleteTarget(url) {
+  let parsed;
+  try {
+    parsed = new URL(String(url));
+  } catch {
+    throw unsafeContainedResourceError();
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw unsafeContainedResourceError();
+  }
+  return parsed.href;
+}
+
+function validateContainedResourceUrl(containerUrl, resourceUrl) {
+  const container = new URL(normalizeDeleteTarget(containerUrl));
+  const resource = new URL(normalizeDeleteTarget(resourceUrl));
+  const isStrictDescendant =
+    resource.pathname !== container.pathname &&
+    resource.pathname.startsWith(container.pathname);
+
+  if (resource.origin !== container.origin || !isStrictDescendant) {
+    throw unsafeContainedResourceError();
+  }
+  return resource.href;
+}
 
 function guessContentType(filename, fallback = "application/octet-stream") {
   const ext = filename.split(".").pop()?.toLowerCase();
@@ -360,11 +441,114 @@ export default function DataManager({ webId, headerUser, onLogout }) {
   const [moveCopyTarget, setMoveCopyTarget] = useState("");
   const [moveCopyMode, setMoveCopyMode] = useState(false);
   const [moveCopySources, setMoveCopySources] = useState([]);
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareTargetUrl, setShareTargetUrl] = useState("");
+  const [shareAgents, setShareAgents] = useState([]);
+  const [renameModalOpen, setRenameModalOpen] = useState(false);
+  const [renameTargetUrl, setRenameTargetUrl] = useState("");
+  const [renameCurrentName, setRenameCurrentName] = useState("");
+  const [newFileOpen, setNewFileOpen] = useState(false);
+  const [newFileName, setNewFileName] = useState("");
+  const [shareTargets, setShareTargets] = useState([]);
+  const [bulkDeleteTargets, setBulkDeleteTargets] = useState([]);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
   const rootUrlRef = useRef("");
   const lastSelectedIndexRef = useRef(null);
+  const loadRequestIdRef = useRef(0);
+  const loadAbortControllerRef = useRef(null);
+
+  const showAlert = useCallback((msg) => {
+    setAlertMessage(msg);
+    setAlertOpen(true);
+  }, []);
+
+  const loadItems = useCallback(async (url, options = {}) => {
+    const { commitUrl = false, reportError = true } = options;
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
+    loadAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortControllerRef.current = controller;
+    const requestFetch = (input, init = {}) =>
+      noCacheFetch(input, { ...init, signal: controller.signal });
+
+    try {
+      setLoading(true);
+      setPreviewItem(null);
+      setPreviewContent("");
+      const dataset = await getSolidDataset(url, { fetch: requestFetch });
+      const containedUrls = getContainedResourceUrlAll(dataset);
+      const allUrls = Array.from(new Set(containedUrls));
+      const itemInfos = await Promise.all(
+        allUrls.map(async (itemUrl) => {
+          try {
+            const res = await requestFetch(itemUrl, { method: "HEAD" });
+            const isFolder = itemUrl.endsWith("/");
+            const name = decodeURIComponent(
+              itemUrl.replace(url, "").replace(/\/$/, "")
+            );
+            const sizeHeader = res.headers.get("Content-Length");
+            const size = sizeHeader ? Number(sizeHeader) : null;
+            return {
+              url: itemUrl,
+              lastModified: res.headers.get("Last-Modified"),
+              size,
+              isFolder,
+              name,
+            };
+          } catch {
+            const isFolder = itemUrl.endsWith("/");
+            const name = decodeURIComponent(
+              itemUrl.replace(url, "").replace(/\/$/, "")
+            );
+            return { url: itemUrl, lastModified: null, size: null, isFolder, name };
+          }
+        })
+      );
+
+      if (requestId !== loadRequestIdRef.current || controller.signal.aborted) {
+        return false;
+      }
+      if (commitUrl) setCurrentUrl(url);
+      setItems(itemInfos);
+      setSelectedItems(new Set());
+      lastSelectedIndexRef.current = null;
+      return true;
+    } catch (error) {
+      const isCurrentRequest = requestId === loadRequestIdRef.current;
+      if (
+        reportError &&
+        isCurrentRequest &&
+        !controller.signal.aborted &&
+        !isAbortError(error)
+      ) {
+        showAlert(formatResourceError(error, "open"));
+      }
+      return false;
+    } finally {
+      if (requestId === loadRequestIdRef.current) {
+        setLoading(false);
+        if (loadAbortControllerRef.current === controller) {
+          loadAbortControllerRef.current = null;
+        }
+      }
+    }
+  }, [showAlert]);
 
   useEffect(() => {
-    if (!webId) return;
+    if (!webId) {
+      loadRequestIdRef.current += 1;
+      loadAbortControllerRef.current?.abort();
+      loadAbortControllerRef.current = null;
+      rootUrlRef.current = "";
+      setCurrentUrl("");
+      setItems([]);
+      setLoading(false);
+      return undefined;
+    }
     const url = new URL(webId);
     const segments = url.pathname.split("/").filter(Boolean);
     const profileIndex = segments.indexOf("profile");
@@ -372,9 +556,15 @@ export default function DataManager({ webId, headerUser, onLogout }) {
     const basePath = baseSegments.length ? `/${baseSegments.join("/")}/` : "/";
     const rootUrl = `${url.origin}${basePath}`;
     rootUrlRef.current = rootUrl;
+    setItems([]);
     setCurrentUrl(rootUrl);
     loadItems(rootUrl);
-  }, [webId]);
+    return () => {
+      loadRequestIdRef.current += 1;
+      loadAbortControllerRef.current?.abort();
+      loadAbortControllerRef.current = null;
+    };
+  }, [webId, loadItems]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -413,59 +603,14 @@ export default function DataManager({ webId, headerUser, onLogout }) {
       );
       window.removeEventListener("drop", dropHandler);
     };
-  }, [currentUrl]);
-
-  const loadItems = async (url) => {
-    try {
-      setLoading(true);
-      setPreviewItem(null);
-      setPreviewContent("");
-      const dataset = await getSolidDataset(url, { fetch: noCacheFetch });
-      const containedUrls = getContainedResourceUrlAll(dataset);
-      let allUrls = [...containedUrls];
-
-      allUrls = Array.from(new Set(allUrls));
-      const itemInfos = await Promise.all(
-        allUrls.map(async (itemUrl) => {
-          try {
-            const res = await noCacheFetch(itemUrl, { method: "HEAD" });
-            const isFolder = itemUrl.endsWith("/");
-            const name = decodeURIComponent(
-              itemUrl.replace(url, "").replace(/\/$/, "")
-            );
-            const sizeHeader = res.headers.get("Content-Length");
-            const size = sizeHeader ? Number(sizeHeader) : null;
-            return {
-              url: itemUrl,
-              lastModified: res.headers.get("Last-Modified"),
-              size,
-              isFolder,
-              name,
-            };
-          } catch {
-            const isFolder = itemUrl.endsWith("/");
-            const name = decodeURIComponent(
-              itemUrl.replace(url, "").replace(/\/$/, "")
-            );
-            return { url: itemUrl, lastModified: null, size: null, isFolder, name };
-          }
-        })
-      );
-      setItems(itemInfos);
-      setSelectedItems(new Set());
-      lastSelectedIndexRef.current = null;
-    } catch {} finally {
-      setLoading(false);
-    }
-  };
+  }, [currentUrl, loadItems]);
 
   const navigateTo = (url) => {
     const nextUrl = url.endsWith("/") ? url : url + "/";
-    setCurrentUrl(nextUrl);
     setSelectedItems(new Set());
     lastSelectedIndexRef.current = null;
     setPreviewItem(null);
-    loadItems(nextUrl);
+    loadItems(nextUrl, { commitUrl: true });
   };
 
   const computeCrumbs = () => {
@@ -481,26 +626,6 @@ export default function DataManager({ webId, headerUser, onLogout }) {
       crumbs.push({ name: decodeURIComponent(part), url: partUrl });
     });
     return crumbs;
-  };
-
-  const [folderModalOpen, setFolderModalOpen] = useState(false);
-  const [shareModalOpen, setShareModalOpen] = useState(false);
-  const [shareTargetUrl, setShareTargetUrl] = useState("");
-  const [shareAgents, setShareAgents] = useState([]);
-  const [renameModalOpen, setRenameModalOpen] = useState(false);
-  const [renameTargetUrl, setRenameTargetUrl] = useState("");
-  const [renameCurrentName, setRenameCurrentName] = useState("");
-  const [newFileOpen, setNewFileOpen] = useState(false);
-  const [newFileName, setNewFileName] = useState("");
-  const [shareTargets, setShareTargets] = useState([]);
-  const [bulkDeleteTargets, setBulkDeleteTargets] = useState([]);
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [alertOpen, setAlertOpen] = useState(false);
-  const [alertMessage, setAlertMessage] = useState("");
-
-  const showAlert = (msg) => {
-    setAlertMessage(msg);
-    setAlertOpen(true);
   };
 
   const handleCreateFolder = async (name) => {
@@ -580,18 +705,37 @@ export default function DataManager({ webId, headerUser, onLogout }) {
     }
   };
 
-  const deleteRecursive = async (url) => {
-    if (url.endsWith("/")) {
-      try {
-        const dataset = await getSolidDataset(url, { fetch: noCacheFetch });
+  const deleteRecursive = async (url, visited = new Set()) => {
+    const deletionPlan = [];
+
+    const collectDeletionPlan = async (candidateUrl) => {
+      const normalizedUrl = normalizeDeleteTarget(candidateUrl);
+      if (visited.has(normalizedUrl)) return;
+      visited.add(normalizedUrl);
+
+      if (normalizedUrl.endsWith("/")) {
+        const dataset = await getSolidDataset(normalizedUrl, { fetch: noCacheFetch });
         const contained = getContainedResourceUrlAll(dataset);
-        for (const item of contained) {
-          await deleteRecursive(item);
+        const safeContained = contained.map((item) =>
+          validateContainedResourceUrl(normalizedUrl, item)
+        );
+        for (const item of safeContained) {
+          await collectDeletionPlan(item);
         }
-      } catch {}
-      await deleteContainer(url, { fetch: noCacheFetch });
-    } else {
-      await deleteFile(url, { fetch: noCacheFetch });
+        deletionPlan.push({ url: normalizedUrl, isContainer: true });
+        return;
+      }
+
+      deletionPlan.push({ url: normalizedUrl, isContainer: false });
+    };
+
+    await collectDeletionPlan(url);
+    for (const item of deletionPlan) {
+      if (item.isContainer) {
+        await deleteContainer(item.url, { fetch: noCacheFetch });
+      } else {
+        await deleteFile(item.url, { fetch: noCacheFetch });
+      }
     }
   };
 
@@ -604,14 +748,20 @@ export default function DataManager({ webId, headerUser, onLogout }) {
 
   const handleDelete = async () => {
     if (!bulkDeleteTargets.length) return;
+    let deleteError = null;
     try {
+      const visited = new Set();
       for (const url of bulkDeleteTargets) {
-        await deleteRecursive(url);
+        const safeTarget = validateContainedResourceUrl(currentUrl, url);
+        await deleteRecursive(safeTarget, visited);
       }
-      await loadItems(currentUrl);
-    } catch {
-      showAlert("Delete failed.");
+    } catch (error) {
+      deleteError = error;
     } finally {
+      await loadItems(currentUrl, { reportError: !deleteError });
+      if (deleteError) {
+        showAlert(formatResourceError(deleteError, "delete"));
+      }
       setBulkDeleteOpen(false);
       setBulkDeleteTargets([]);
     }
@@ -830,12 +980,13 @@ export default function DataManager({ webId, headerUser, onLogout }) {
     const target = normalizeFolderUrl(targetFolderUrl);
     try {
       for (const url of urls) {
-        const trimmed = url.replace(/\/$/, "");
+        const safeSourceUrl = validateContainedResourceUrl(currentUrl, url);
+        const trimmed = safeSourceUrl.replace(/\/$/, "");
         const name = decodeURIComponent(trimmed.split("/").pop() || "");
-        const destUrl = `${target}${name}${url.endsWith("/") ? "/" : ""}`;
-        await copyRecursive(url, destUrl);
+        const destUrl = `${target}${name}${safeSourceUrl.endsWith("/") ? "/" : ""}`;
+        await copyRecursive(safeSourceUrl, destUrl);
         if (!copyMode) {
-          await deleteRecursive(url);
+          await deleteRecursive(safeSourceUrl);
         }
       }
       await loadItems(currentUrl);
