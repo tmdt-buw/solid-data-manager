@@ -27,6 +27,27 @@
   outline-offset: 2px;
 }
 
+.language-select--login {
+  flex: 0 0 auto;
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
+  padding: 0 5px 0 12px;
+  box-sizing: border-box;
+  border: 1px solid #dbe8ff;
+  border-radius: 14px;
+  background: #f8fbff;
+  color: #0f172a;
+}
+
+.language-select--login select {
+  min-width: 112px;
+  height: 34px;
+  padding-block: 5px;
+  border-color: transparent;
+  border-radius: 10px;
+}
+
 .language-select--standalone {
   position: fixed;
   right: 18px;
@@ -37,4 +58,18 @@
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+}
+
+@media (max-width: 560px) {
+  .language-select--login {
+    width: 100%;
+    justify-content: space-between;
+    min-width: 0;
+  }
+
+  .language-select--login select {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+  }
 }

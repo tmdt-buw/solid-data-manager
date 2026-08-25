@@ -134,8 +134,10 @@ const App = () => {
     return (
       <I18nProvider>
         <div className="standalone-login-page">
-          <LanguageSelect className="language-select--standalone" />
-          <LoginScreen onLogin={loginToSolid} />
+          <LoginScreen
+            onLogin={loginToSolid}
+            languageControl={<LanguageSelect className="language-select--login" />}
+          />
         </div>
       </I18nProvider>
     );
