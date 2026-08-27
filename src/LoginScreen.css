@@ -314,7 +314,7 @@
 }
 
 .standalone-login-page {
-  min-height: calc(100vh / 0.7);
+  min-height: var(--dataspace-scaled-vh, 100vh);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -328,6 +328,7 @@
 @media (max-width: 720px) {
   .standalone-login-page {
     min-height: 100vh;
+    min-height: 100dvh;
     padding: 24px 12px;
   }
 }

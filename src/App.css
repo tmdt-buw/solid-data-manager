@@ -1,6 +1,8 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap");
 
 :root {
+  --solid-data-manager-standalone-scale: 0.7;
+  --dataspace-scaled-vh: 100vh;
   --primary: #1d4ed8;
   --primary-ghost: #eaf2ff;
   --text: #0f172a;
@@ -14,6 +16,12 @@
   --radius: 18px;
 }
 
+@supports (height: 100dvh) {
+  :root {
+    --dataspace-scaled-vh: 100dvh;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -23,11 +31,36 @@ body {
   background: var(--bg);
   margin: 0;
   color: var(--text);
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
 }
 
 @media (min-width: 900px) {
+  :root {
+    --dataspace-scaled-vh: calc(100vh / var(--solid-data-manager-standalone-scale));
+  }
+
   body {
-    zoom: 0.7;
+    zoom: var(--solid-data-manager-standalone-scale);
+  }
+
+  html.browser-safari {
+    --dataspace-scaled-vh: 100vh;
+  }
+
+  html.browser-safari body {
+    zoom: 1;
+  }
+
+  @supports (height: 100dvh) {
+    :root {
+      --dataspace-scaled-vh: calc(100dvh / var(--solid-data-manager-standalone-scale));
+    }
+
+    html.browser-safari {
+      --dataspace-scaled-vh: 100dvh;
+    }
   }
 }
 
