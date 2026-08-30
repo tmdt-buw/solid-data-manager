@@ -50,4 +50,31 @@ describe("standalone scaling", () => {
     expect(embedStyles).not.toMatch(/(^|[;{]\s*)zoom\s*:/m);
     expect(embedStyles).not.toMatch(/body\s*>\s*#root[^}]*transform\s*:/s);
   });
+
+  test("matches the Solid Tours loader geometry and motion", () => {
+    expect(embedStyles).toMatch(
+      /\.sdm-content-loader__mark\s*{[^}]*width:\s*5rem[^}]*height:\s*5rem[^}]*border-radius:\s*1\.5rem/s
+    );
+    expect(embedStyles).toMatch(
+      /\.sdm-content-loader__title\s*{[^}]*margin:\s*1\.25rem 0 0\.55rem[^}]*font-size:\s*clamp\(1\.8rem, 4vw, 2\.8rem\)/s
+    );
+    expect(embedStyles).toMatch(
+      /\.sdm-content-loader\s*{[^}]*font-family:\s*Manrope, Inter, ui-sans-serif, system-ui/s
+    );
+    expect(embedStyles).toMatch(
+      /\.sdm-content-loader__title\s*{[^}]*font-weight:\s*700/s
+    );
+    expect(embedStyles).not.toMatch(
+      /\.sdm-content-loader__title\s*{[^}]*line-height\s*:/s
+    );
+    expect(embedStyles).toMatch(
+      /\.sdm-content-loader__rail\s*{[^}]*width:\s*min\(18rem, 70vw\)[^}]*margin-top:\s*1\.5rem/s
+    );
+    expect(embedStyles).toMatch(
+      /@keyframes\s+sdm-content-loader-progress\s*{[^}]*translateX\(-105%\)[\s\S]*translateX\(243%\)/s
+    );
+    expect(embedStyles).toMatch(
+      /\.sdm-content-loader--files\s*{[^}]*height:\s*100%[^}]*flex:\s*1[^}]*min-height:\s*0/s
+    );
+  });
 });

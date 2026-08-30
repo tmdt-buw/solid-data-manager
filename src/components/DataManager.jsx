@@ -39,6 +39,7 @@ import RenameItemModal from "./RenameItemModal";
 import AlertModal from "./AlertModal";
 import ConfirmModal from "./ConfirmModal";
 import { appVersion } from "../version";
+import { useI18n } from "../i18n";
 
 const noCacheFetch = (input, init = {}) =>
   session.fetch(input, {
@@ -219,6 +220,46 @@ function TopHeader({ headerUser, onLogout }) {
   );
 }
 
+function ContentLoadingState({ variant = "files" }) {
+  const { t } = useI18n();
+  const isPreview = variant === "preview";
+  const title = t(isPreview ? "File preview" : "Solid Data Manager");
+  const message = t(
+    isPreview
+      ? "Loading your personal file preview …"
+      : "Loading your personal Pod workspace …"
+  );
+  const Heading = isPreview ? "strong" : "h1";
+  const Root = isPreview ? "div" : "main";
+
+  return (
+    <Root
+      className={`sdm-content-loader sdm-content-loader--${variant}`}
+      aria-busy="true"
+    >
+      <span className="sdm-content-loader__mark" aria-hidden="true">
+        <FontAwesomeIcon icon={isPreview ? faEye : faFolder} />
+      </span>
+      <Heading className="sdm-content-loader__title">{title}</Heading>
+      <p
+        className="sdm-content-loader__message"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {message}
+      </p>
+      <span
+        className="sdm-content-loader__rail"
+        role="progressbar"
+        aria-label={message}
+      >
+        <span />
+      </span>
+    </Root>
+  );
+}
+
 function FilesView({
   items,
   loading,
@@ -328,7 +369,7 @@ function FilesView({
         </div>
       </div>
       {loading ? (
-        <p>Loading...</p>
+        <ContentLoadingState />
       ) : (
         <>
           <div className="file-table-container">
@@ -1239,7 +1280,7 @@ export default function DataManager({ webId, headerUser, onLogout }) {
                 <div><strong>Size:</strong> {formatBytes(previewItem.size)}</div>
               </div>
               {previewLoading ? (
-                <div className="preview-loading">Loading preview...</div>
+                <ContentLoadingState variant="preview" />
               ) : previewEditMode ? (
                 <textarea
                   className="preview-editor"

@@ -7,6 +7,7 @@ import {
   getSolidDataset,
 } from "@inrupt/solid-client";
 import session from "../solidSession";
+import { translateText } from "../i18n";
 import DataManager from "./DataManager";
 
 jest.mock("@inrupt/solid-client", () => ({
@@ -71,6 +72,95 @@ beforeEach(() => {
   jest.clearAllMocks();
   getContainedResourceUrlAll.mockImplementation((dataset) => dataset.contained || []);
   session.fetch.mockResolvedValue(mockHeadResponse());
+});
+
+test("translates the application loading copy", () => {
+  expect(translateText("Solid Data Manager", "de")).toBe("Solid Datenmanager");
+  expect(translateText("Loading your personal Pod workspace …", "de")).toBe(
+    "Dein persönlicher Pod-Bereich wird geladen …"
+  );
+  expect(translateText("File preview", "de")).toBe("Dateivorschau");
+  expect(translateText("Loading your personal file preview …", "de")).toBe(
+    "Deine persönliche Dateivorschau wird geladen …"
+  );
+});
+
+test("exposes the file-list loading state to assistive technology", async () => {
+  const request = deferred();
+  getSolidDataset.mockReturnValue(request.promise);
+
+  const { container } = render(<DataManager webId={WEB_ID} />);
+
+  const heading = await screen.findByRole("heading", {
+    name: "Solid Data Manager",
+    level: 1,
+  });
+  const loadingState = heading.closest(".sdm-content-loader");
+  expect(loadingState?.tagName).toBe("MAIN");
+  expect(loadingState).toHaveAttribute("aria-busy", "true");
+  expect(loadingState).toHaveClass("sdm-content-loader--files");
+  const status = within(loadingState).getByRole("status");
+  expect(status).toHaveAttribute("aria-live", "polite");
+  expect(status).toHaveTextContent("Loading your personal Pod workspace …");
+  expect(within(loadingState).getAllByRole("status")).toHaveLength(1);
+  expect(within(loadingState).getByRole("progressbar")).toHaveAttribute(
+    "aria-label",
+    "Loading your personal Pod workspace …"
+  );
+  expect(container.querySelector(".sdm-content-loader__eyebrow"))
+    .not.toBeInTheDocument();
+
+  await act(async () => {
+    request.resolve(datasetWith());
+    await request.promise;
+  });
+
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("heading", { name: "Solid Data Manager", level: 1 })
+    ).not.toBeInTheDocument();
+  });
+});
+
+test("keeps preview metadata visible while exposing a compact preview loader", async () => {
+  const fileUrl = `${ROOT_URL}notes.txt`;
+  const previewRequest = deferred();
+  getSolidDataset.mockResolvedValue(datasetWith(fileUrl));
+  session.fetch.mockImplementation((_input, init = {}) => {
+    if (init.method === "HEAD") return Promise.resolve(mockHeadResponse());
+    return previewRequest.promise;
+  });
+
+  render(<DataManager webId={WEB_ID} />);
+
+  const fileName = await screen.findByText("notes.txt");
+  fireEvent.click(fileName.closest("tr"));
+  fireEvent.click(screen.getByTitle("Preview"));
+
+  const loadingState = await screen.findByRole("status");
+  expect(loadingState).toHaveTextContent(
+    "Loading your personal file preview …"
+  );
+  const previewModal = loadingState.closest(".preview-modal");
+  expect(loadingState.closest(".sdm-content-loader")).toHaveClass(
+    "sdm-content-loader--preview"
+  );
+  expect(within(previewModal).getByText("File preview")).toBeInTheDocument();
+  expect(within(previewModal).getByText("Name:")).toBeInTheDocument();
+  expect(within(previewModal).getByText("notes.txt")).toBeInTheDocument();
+
+  await act(async () => {
+    previewRequest.resolve({
+      ok: true,
+      text: jest.fn().mockResolvedValue("Preview content"),
+    });
+    await previewRequest.promise;
+  });
+
+  expect(await screen.findByText("Preview content")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("status")
+  ).not.toBeInTheDocument();
 });
 
 test("keeps the parent breadcrumb and listing when opening a folder returns 403", async () => {

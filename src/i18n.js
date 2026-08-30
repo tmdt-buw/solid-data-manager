@@ -35,6 +35,12 @@ const enToDe = {
   "Upload file": "Datei hochladen",
   "Search files...": "Dateien suchen...",
   "Loading...": "Wird geladen...",
+  "Loading preview...": "Vorschau wird geladen...",
+  "Loading your personal Pod workspace …":
+    "Dein persönlicher Pod-Bereich wird geladen …",
+  "File preview": "Dateivorschau",
+  "Loading your personal file preview …":
+    "Deine persönliche Dateivorschau wird geladen …",
   Name: "Name",
   Type: "Typ",
   Size: "Größe",
