@@ -3,9 +3,15 @@ name: Docker Hub Solid Data Manager
 on:
   push:
     branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-and-push:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -17,60 +23,126 @@ jobs:
           node-version: "20"
           registry-url: "https://npm.pkg.github.com"
           scope: "@hoelk-f"
+      - name: Check release secrets and authentication
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          MANAGER_TOKEN: ${{ secrets.MANAGER_DISPATCH_TOKEN || secrets.NPM_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for secret_name in NPM_TOKEN MANAGER_TOKEN DOCKERHUB_USERNAME DOCKERHUB_TOKEN; do
+            if [ -z "${!secret_name:-}" ]; then
+              echo "Missing repository secret ${secret_name}." >&2
+              exit 1
+            fi
+          done
+
+          NODE_AUTH_TOKEN="$NPM_TOKEN" npm whoami --registry https://npm.pkg.github.com >/dev/null
+          curl --fail-with-body --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${MANAGER_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/hoelk-f/solid-dataspace-manager >/dev/null
       - name: Install dependencies
         run: npm ci
       - name: Build library
         run: npm run build:lib
-      - name: Bump version for publish
+      - name: Verify committed package version
+        id: package-version
         env:
+          RELEASE_EVENT: ${{ github.event_name }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
         run: |
+          set -euo pipefail
           node - <<'NODE'
-          const { execSync } = require('child_process');
+          const { execFileSync } = require('child_process');
+          const { appendFileSync, readFileSync } = require('fs');
           const pkg = require('./package.json');
+          const lock = require('./package-lock.json');
+          const versionSource = readFileSync('./src/version.js', 'utf8');
 
-          const parse = (v) => v.split('.').map((n) => parseInt(n, 10));
+          const parse = (version, label) => {
+            if (!/^\d+\.\d+\.\d+$/.test(version)) {
+              throw new Error(`${label} is not a stable SemVer: ${version}`);
+            }
+            return version.split('.').map(Number);
+          };
           const cmp = (a, b) => {
-            const pa = parse(a);
-            const pb = parse(b);
+            const pa = parse(a, 'package.json version');
+            const pb = parse(b, 'published version');
             for (let i = 0; i < 3; i += 1) {
-              const da = Number.isFinite(pa[i]) ? pa[i] : 0;
-              const db = Number.isFinite(pb[i]) ? pb[i] : 0;
-              if (da > db) return 1;
-              if (da < db) return -1;
+              if (pa[i] > pb[i]) return 1;
+              if (pa[i] < pb[i]) return -1;
             }
             return 0;
           };
-          const bumpPatch = (v) => {
-            const [a, b, c] = parse(v);
-            const na = Number.isFinite(a) ? a : 0;
-            const nb = Number.isFinite(b) ? b : 0;
-            const nc = Number.isFinite(c) ? c : 0;
-            return `${na}.${nb}.${nc + 1}`;
+
+          parse(pkg.version, 'package.json version');
+          if (lock.version !== pkg.version || lock.packages?.['']?.version !== pkg.version) {
+            throw new Error(
+              `Package version is not synchronized: package.json=${pkg.version}, ` +
+              `package-lock.json=${lock.version}, lock root=${lock.packages?.['']?.version}.`
+            );
+          }
+          const versionMatch = versionSource.match(/^export const appVersion\s*=\s*"([^"]+)";\s*$/m);
+          if (!versionMatch || versionMatch[1] !== pkg.version) {
+            throw new Error(
+              `Source version is not synchronized: package.json=${pkg.version}, src/version.js=${versionMatch?.[1] || '<missing>'}.`
+            );
+          }
+
+          const readPublishedVersion = (spec) => {
+            for (let attempt = 1; attempt <= 3; attempt += 1) {
+              try {
+                return execFileSync(
+                  'npm',
+                  ['view', spec, 'version', '--registry', 'https://npm.pkg.github.com', '--loglevel=error'],
+                  { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+                ).trim();
+              } catch (error) {
+                const diagnostic = `${error.stdout || ''}\n${error.stderr || ''}\n${error.message || ''}`;
+                if (/(^|\s)E404(\s|$)|404 Not Found/i.test(diagnostic)) {
+                  if (attempt === 3) return '';
+                } else if (attempt === 3) {
+                  throw new Error(`Unable to query ${spec}; registry availability is unknown. ${diagnostic.trim()}`);
+                }
+                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000);
+              }
+            }
+            throw new Error(`Unable to query ${spec}.`);
           };
 
-          let latest = '';
-          try {
-            latest = execSync(
-              'npm view @hoelk-f/solid-data-manager version --registry https://npm.pkg.github.com',
-              { encoding: 'utf8' }
-            ).trim();
-          } catch (err) {
-            latest = '';
+          const latest = readPublishedVersion('@hoelk-f/solid-data-manager');
+          const exact = readPublishedVersion(`@hoelk-f/solid-data-manager@${pkg.version}`);
+          if (latest && cmp(pkg.version, latest) < 0) {
+            throw new Error(
+              `Committed version ${pkg.version} is older than published version ${latest}. ` +
+              'Run versioning-update.ps1 before publishing.'
+            );
+          }
+          if (exact && exact !== pkg.version) {
+            throw new Error(`Exact package lookup returned ${exact}, expected ${pkg.version}.`);
+          }
+          if (latest === pkg.version && !exact) {
+            throw new Error(`Latest points to ${pkg.version}, but the exact package lookup returned 404.`);
           }
 
-          let base = pkg.version;
-          if (latest && cmp(latest, base) >= 0) {
-            base = latest;
+          const packageExists = exact === pkg.version;
+          if (packageExists && process.env.RELEASE_EVENT !== 'workflow_dispatch') {
+            throw new Error(
+              `Version ${pkg.version} is already published. Bump the version for a normal main push, or use workflow_dispatch to rebuild the existing release.`
+            );
           }
-
-          const next = bumpPatch(base);
-          console.log(`Current version: ${pkg.version}`);
-          if (latest) console.log(`Published version: ${latest}`);
-          console.log(`Bumping to: ${next}`);
-          execSync(`npm version ${next} --no-git-tag-version`, { stdio: 'inherit' });
+          appendFileSync(
+            process.env.GITHUB_OUTPUT,
+            `package_version=${pkg.version}\npackage_exists=${packageExists}\n`,
+          );
           NODE
       - name: Publish package
+        if: steps.package-version.outputs.package_exists != 'true'
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -84,4 +156,65 @@ jobs:
           context: ./
           file: ./Dockerfile
           push: true
-          tags: son1i/solid-data-manager:latest
+          tags: |
+            son1i/solid-data-manager:latest
+            son1i/solid-data-manager:${{ steps.package-version.outputs.package_version }}
+      - name: Wait for package and trigger solid-dataspace-manager rebuild
+        env:
+          MANAGER_TOKEN: ${{ secrets.MANAGER_DISPATCH_TOKEN || secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PACKAGE_VERSION: ${{ steps.package-version.outputs.package_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${MANAGER_TOKEN:-}" ]; then
+            echo "Missing MANAGER_DISPATCH_TOKEN and fallback NPM_TOKEN; Manager rebuild cannot be dispatched." >&2
+            exit 1
+          fi
+
+          lookup_exact_version() {
+            local output status
+            set +e
+            output=$(npm view "$1" version --registry https://npm.pkg.github.com --loglevel=error 2>&1)
+            status=$?
+            set -e
+            if [ "$status" -eq 0 ]; then
+              printf '%s' "$output"
+              return 0
+            fi
+            if printf '%s' "$output" | grep -Eqi '(^|[[:space:]])E404|404 Not Found'; then
+              return 1
+            fi
+            printf 'npm view failed for %s:\n%s\n' "$1" "$output" >&2
+            return 2
+          }
+
+          for attempt in $(seq 1 60); do
+            if PUBLISHED_VERSION=$(lookup_exact_version "@hoelk-f/solid-data-manager@${PACKAGE_VERSION}"); then
+              if [ "$PUBLISHED_VERSION" != "$PACKAGE_VERSION" ]; then
+                echo "Registry returned unexpected version ${PUBLISHED_VERSION:-<empty>} for Data Manager ${PACKAGE_VERSION}." >&2
+                exit 1
+              fi
+              break
+            else
+              LOOKUP_STATUS=$?
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              if [ "$LOOKUP_STATUS" -eq 1 ]; then
+                echo "Data Manager package ${PACKAGE_VERSION} did not become visible in time." >&2
+              else
+                echo "Data Manager registry lookup kept failing; availability could not be determined." >&2
+              fi
+              exit 1
+            fi
+            sleep 10
+          done
+
+          PAYLOAD=$(node -e 'process.stdout.write(JSON.stringify({event_type: "solid-data-manager-released", client_payload: {package: "@hoelk-f/solid-data-manager", version: process.env.PACKAGE_VERSION}}))')
+          curl --fail-with-body --silent --show-error -L \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${MANAGER_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/hoelk-f/solid-dataspace-manager/dispatches \
+            --data "$PAYLOAD"
