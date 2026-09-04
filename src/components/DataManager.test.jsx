@@ -5,6 +5,7 @@ import {
   deleteFile,
   getContainedResourceUrlAll,
   getSolidDataset,
+  overwriteFile,
 } from "@inrupt/solid-client";
 import session from "../solidSession";
 import { translateText } from "../i18n";
@@ -57,6 +58,15 @@ function deferred() {
     reject = rejectPromise;
   });
   return { promise, resolve, reject };
+}
+
+function readBlobText(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result)));
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsText(blob);
+  });
 }
 
 async function confirmSelectedItemsDelete() {
@@ -161,6 +171,69 @@ test("keeps preview metadata visible while exposing a compact preview loader", a
   expect(
     screen.queryByRole("status")
   ).not.toBeInTheDocument();
+});
+
+test("previews, edits, and saves the complete content of a large Turtle file", async () => {
+  const fileUrl = `${ROOT_URL}latest.ttl`;
+  const fullContent = `@prefix example: <https://example.com/>.\n<#resource> example:value "${"x".repeat(6000)}".\n# complete`;
+  const editedContent = `${fullContent}\n# edited`;
+  let storedContent = fullContent;
+  let previewReads = 0;
+  const previewRequest = deferred();
+  const saveRequest = deferred();
+  getSolidDataset.mockResolvedValue(datasetWith(fileUrl));
+  session.fetch.mockImplementation((input, init = {}) => {
+    expect(input).toBe(fileUrl);
+    if (init.method === "HEAD") return Promise.resolve(mockHeadResponse());
+    previewReads += 1;
+    if (previewReads === 1) return previewRequest.promise;
+    return Promise.resolve({
+      ok: true,
+      text: jest.fn().mockImplementation(() => Promise.resolve(storedContent)),
+    });
+  });
+  overwriteFile.mockReturnValue(saveRequest.promise);
+
+  const { container } = render(<DataManager webId={WEB_ID} />);
+
+  const fileName = await screen.findByText("latest.ttl");
+  fireEvent.click(fileName.closest("tr"));
+  fireEvent.click(screen.getByTitle("Preview"));
+
+  await act(async () => {
+    previewRequest.resolve({
+      ok: true,
+      text: jest.fn().mockResolvedValue(fullContent),
+    });
+    await previewRequest.promise;
+  });
+
+  await waitFor(() => {
+    expect(container.querySelector(".preview-code")).toHaveTextContent("# complete");
+  });
+  expect(container.querySelector(".preview-code")?.textContent).toBe(fullContent);
+
+  fireEvent.click(screen.getByRole("button", { name: "Edit file" }));
+  const editor = container.querySelector(".preview-editor");
+  expect(editor).toHaveValue(fullContent);
+  fireEvent.change(editor, { target: { value: editedContent } });
+  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+  await waitFor(() => expect(overwriteFile).toHaveBeenCalledTimes(1));
+  const [savedUrl, savedBlob, options] = overwriteFile.mock.calls[0];
+  expect(savedUrl).toBe(fileUrl);
+  expect(options.contentType).toBe("text/turtle");
+  expect(options.fetch).toEqual(expect.any(Function));
+  expect(await readBlobText(savedBlob)).toBe(editedContent);
+  storedContent = editedContent;
+  await act(async () => {
+    saveRequest.resolve();
+    await saveRequest.promise;
+  });
+  await waitFor(() => {
+    expect(previewReads).toBe(2);
+    expect(container.querySelector(".preview-code")?.textContent).toBe(editedContent);
+  });
 });
 
 test("keeps the parent breadcrumb and listing when opening a folder returns 403", async () => {

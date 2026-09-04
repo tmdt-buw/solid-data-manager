@@ -173,6 +173,13 @@ function getExtension(name) {
   return parts.length > 1 ? parts.pop().toLowerCase() : "";
 }
 
+function isEditablePreview(item) {
+  if (!item) return false;
+  const ext = getExtension(item.name);
+  if (!ext) return true;
+  return ["json", "csv", "txt", "ttl"].includes(ext);
+}
+
 function getItemType(item) {
   if (item.isFolder) return "Folder";
   const ext = getExtension(item.name);
@@ -699,13 +706,6 @@ export default function DataManager({ webId, headerUser, onLogout }) {
     }
   };
 
-  const isEditablePreview = (item) => {
-    if (!item) return false;
-    const ext = getExtension(item.name);
-    if (!ext) return true;
-    return ["json", "csv", "txt", "ttl"].includes(ext);
-  };
-
   const savePreviewEdits = async () => {
     if (!previewItem || !isEditablePreview(previewItem)) return;
     setPreviewSaving(true);
@@ -959,7 +959,7 @@ export default function DataManager({ webId, headerUser, onLogout }) {
     }
   };
 
-  const loadPreview = async (item) => {
+  const loadPreview = useCallback(async (item) => {
     if (!item || item.isFolder) return;
     setPreviewLoading(true);
     try {
@@ -973,12 +973,13 @@ export default function DataManager({ webId, headerUser, onLogout }) {
           setPreviewContent(JSON.stringify(parsed, null, 2));
           setPreviewEditableContent(JSON.stringify(parsed, null, 2));
         } catch {
-          setPreviewContent(text.slice(0, 5000));
-          setPreviewEditableContent(text.slice(0, 5000));
+          setPreviewContent(text);
+          setPreviewEditableContent(text);
         }
       } else {
-        setPreviewContent(text.slice(0, 5000));
-        setPreviewEditableContent(text.slice(0, 5000));
+        const previewText = isEditablePreview(item) ? text : text.slice(0, 5000);
+        setPreviewContent(previewText);
+        setPreviewEditableContent(previewText);
       }
       setPreviewEditMode(false);
     } catch {
@@ -987,13 +988,13 @@ export default function DataManager({ webId, headerUser, onLogout }) {
     } finally {
       setPreviewLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (previewItem) {
       loadPreview(previewItem);
     }
-  }, [previewItem]);
+  }, [previewItem, loadPreview]);
 
   const normalizeFolderUrl = (url) => (url.endsWith("/") ? url : `${url}/`);
 
