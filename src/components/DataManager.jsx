@@ -522,6 +522,9 @@ export default function DataManager({ webId, headerUser, onLogout }) {
     loadAbortControllerRef.current = controller;
     const requestFetch = (input, init = {}) =>
       noCacheFetch(input, { ...init, signal: controller.signal });
+    const statisticsUrl = rootUrlRef.current
+      ? new URL("statistics/", rootUrlRef.current).href
+      : "";
 
     try {
       setLoading(true);
@@ -529,30 +532,32 @@ export default function DataManager({ webId, headerUser, onLogout }) {
       setPreviewContent("");
       const dataset = await getSolidDataset(url, { fetch: requestFetch });
       const containedUrls = getContainedResourceUrlAll(dataset);
-      const allUrls = Array.from(new Set(containedUrls));
+      // Hide the Pod's internal statistics folder before requesting metadata.
+      // This is only a file-browser filter; no Pod data or access rules change.
+      const allUrls = Array.from(new Set(containedUrls)).filter(
+        (itemUrl) => itemUrl !== statisticsUrl
+      );
       const itemInfos = await Promise.all(
         allUrls.map(async (itemUrl) => {
+          const isFolder = itemUrl.endsWith("/");
+          const name = decodeURIComponent(
+            itemUrl.replace(url, "").replace(/\/$/, "")
+          );
+          const item = { url: itemUrl, lastModified: null, size: null, isFolder, name };
+          // Folder navigation only needs the URL already in the container listing.
+          // Avoid unnecessary HEAD requests to potentially protected containers.
+          if (isFolder) return item;
           try {
             const res = await requestFetch(itemUrl, { method: "HEAD" });
-            const isFolder = itemUrl.endsWith("/");
-            const name = decodeURIComponent(
-              itemUrl.replace(url, "").replace(/\/$/, "")
-            );
             const sizeHeader = res.headers.get("Content-Length");
             const size = sizeHeader ? Number(sizeHeader) : null;
             return {
-              url: itemUrl,
+              ...item,
               lastModified: res.headers.get("Last-Modified"),
               size,
-              isFolder,
-              name,
             };
           } catch {
-            const isFolder = itemUrl.endsWith("/");
-            const name = decodeURIComponent(
-              itemUrl.replace(url, "").replace(/\/$/, "")
-            );
-            return { url: itemUrl, lastModified: null, size: null, isFolder, name };
+            return item;
           }
         })
       );

@@ -1,11 +1,13 @@
 import React from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import {
+  createContainerAt,
   deleteContainer,
   deleteFile,
   getContainedResourceUrlAll,
   getSolidDataset,
   overwriteFile,
+  saveAclFor,
 } from "@inrupt/solid-client";
 import session from "../solidSession";
 import { translateText } from "../i18n";
@@ -82,6 +84,82 @@ beforeEach(() => {
   jest.clearAllMocks();
   getContainedResourceUrlAll.mockImplementation((dataset) => dataset.contained || []);
   session.fetch.mockResolvedValue(mockHeadResponse());
+});
+
+test.each([
+  [WEB_ID, ROOT_URL],
+  ["https://server.example/solidtestpod/profile/card#me", "https://server.example/solidtestpod/"],
+])("hides the internal statistics folder without accessing or modifying it for %s", async (webId, rootUrl) => {
+  const statisticsUrl = `${rootUrl}statistics/`;
+  const visibleFileUrl = `${rootUrl}statistics.json`;
+  getSolidDataset.mockResolvedValue(datasetWith(
+    statisticsUrl, statisticsUrl, `${rootUrl}documents/`, `${rootUrl}statistics-backup/`, visibleFileUrl
+  ));
+
+  render(<DataManager webId={webId} />);
+
+  expect(await screen.findByRole("button", { name: "documents" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "statistics", exact: true })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "statistics-backup" })).toBeInTheDocument();
+  expect(screen.getByText("statistics.json")).toBeInTheDocument();
+  expect(getSolidDataset).toHaveBeenCalledTimes(1);
+  expect(getSolidDataset).toHaveBeenCalledWith(rootUrl, expect.any(Object));
+  expect(session.fetch).toHaveBeenCalledTimes(1);
+  expect(session.fetch).toHaveBeenCalledWith(visibleFileUrl, expect.objectContaining({ method: "HEAD" }));
+  expect(createContainerAt).not.toHaveBeenCalled();
+  expect(overwriteFile).not.toHaveBeenCalled();
+  expect(deleteFile).not.toHaveBeenCalled();
+  expect(deleteContainer).not.toHaveBeenCalled();
+  expect(saveAclFor).not.toHaveBeenCalled();
+});
+
+test("keeps user statistics subfolders navigable without folder HEAD requests", async () => {
+  const documentsUrl = `${ROOT_URL}documents/`;
+  const userStatisticsUrl = `${documentsUrl}statistics/`;
+  const fileUrl = `${userStatisticsUrl}report.txt`;
+  getSolidDataset.mockImplementation(async (url) => {
+    if (url === ROOT_URL) return datasetWith(`${ROOT_URL}statistics/`, documentsUrl);
+    if (url === documentsUrl) return datasetWith(userStatisticsUrl);
+    if (url === userStatisticsUrl) return datasetWith(fileUrl);
+    throw new Error(`Unexpected URL: ${url}`);
+  });
+
+  render(<DataManager webId={WEB_ID} />);
+  fireEvent.click(await screen.findByRole("button", { name: "documents" }));
+  fireEvent.click(await screen.findByRole("button", { name: "statistics", exact: true }));
+  expect(await screen.findByText("report.txt")).toBeInTheDocument();
+  expect(session.fetch).toHaveBeenCalledTimes(1);
+  expect(session.fetch).toHaveBeenCalledWith(fileUrl, expect.objectContaining({ method: "HEAD" }));
+});
+
+test("finishes loading when only the hidden statistics folder exists", async () => {
+  getSolidDataset.mockResolvedValue(datasetWith(`${ROOT_URL}statistics/`));
+  render(<DataManager webId={WEB_ID} />);
+
+  expect(await screen.findByRole("table")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "statistics", exact: true })).not.toBeInTheDocument();
+  expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  expect(session.fetch).not.toHaveBeenCalled();
+});
+
+test("preserves file metadata while omitting folder metadata requests", async () => {
+  const fileUrl = `${ROOT_URL}notes.txt`;
+  getSolidDataset.mockResolvedValue(datasetWith(`${ROOT_URL}documents/`, fileUrl));
+  session.fetch.mockResolvedValue({
+    headers: { get: (header) => ({
+      "Content-Length": "123",
+      "Last-Modified": "Sun, 06 Sep 2026 13:17:49 GMT",
+    }[header] || null) },
+  });
+
+  render(<DataManager webId={WEB_ID} />);
+  const row = (await screen.findByText("notes.txt")).closest("tr");
+  expect(within(row).getByText("123 B")).toBeInTheDocument();
+  expect(row).toHaveTextContent(new Date("Sun, 06 Sep 2026 13:17:49 GMT").toLocaleString("de-DE", {
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  }));
+  expect(session.fetch).toHaveBeenCalledTimes(1);
+  expect(session.fetch).toHaveBeenCalledWith(fileUrl, expect.objectContaining({ method: "HEAD" }));
 });
 
 test("translates the application loading copy", () => {
