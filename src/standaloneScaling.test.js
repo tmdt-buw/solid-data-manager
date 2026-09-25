@@ -51,7 +51,7 @@ describe("standalone scaling", () => {
     expect(embedStyles).not.toMatch(/body\s*>\s*#root[^}]*transform\s*:/s);
   });
 
-  test("matches the Solid Tours loader geometry and motion", () => {
+  test("matches the City Tours loader geometry and motion", () => {
     expect(embedStyles).toMatch(
       /\.sdm-content-loader__mark\s*{[^}]*width:\s*5rem[^}]*height:\s*5rem[^}]*border-radius:\s*1\.5rem/s
     );
