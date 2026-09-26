@@ -56,11 +56,11 @@ const enToDe = {
   "Download failed.": "Download fehlgeschlagen.",
   "Delete failed.": "Löschen fehlgeschlagen.",
   "Authentication required (401). Please log in again.":
-    "Anmeldung erforderlich (401). Bitte melden Sie sich erneut an.",
+    "Anmeldung erforderlich (401). Bitte melde dich erneut an.",
   "Access denied (403). You do not have permission to open this folder.":
-    "Zugriff verweigert (403). Sie haben keine Berechtigung, diesen Ordner zu öffnen.",
+    "Zugriff verweigert (403). Du hast keine Berechtigung, diesen Ordner zu öffnen.",
   "Access denied (403). You do not have permission to delete the selected items.":
-    "Zugriff verweigert (403). Sie haben keine Berechtigung, die ausgewählten Elemente zu löschen.",
+    "Zugriff verweigert (403). Du hast keine Berechtigung, die ausgewählten Elemente zu löschen.",
   "Folder not found (404). It may have been moved or deleted.":
     "Ordner nicht gefunden (404). Er wurde möglicherweise verschoben oder gelöscht.",
   "Delete failed (404). An item no longer exists.":
@@ -70,15 +70,15 @@ const enToDe = {
   "Delete stopped because a folder contains an invalid resource reference.":
     "Löschen abgebrochen, weil ein Ordner einen ungültigen Ressourcenverweis enthält.",
   "Delete failed. Please try again.":
-    "Löschen fehlgeschlagen. Bitte versuchen Sie es erneut.",
+    "Löschen fehlgeschlagen. Bitte versuche es erneut.",
   "Opening folder failed. Please try again or check your connection.":
-    "Ordner konnte nicht geöffnet werden. Bitte versuchen Sie es erneut oder prüfen Sie Ihre Verbindung.",
+    "Ordner konnte nicht geöffnet werden. Bitte versuche es erneut oder prüfe deine Verbindung.",
   "Rename failed.": "Umbenennen fehlgeschlagen.",
   "Upload failed.": "Upload fehlgeschlagen.",
   "Create folder failed.": "Ordner konnte nicht erstellt werden.",
   "No files found.": "Keine Dateien gefunden.",
   "Select a file to preview.": "Wähle eine Datei für die Vorschau aus.",
-  "Solid Data Manager": "Solid Datenmanager",
+  "Solid Data Manager": "Solid Data Manager",
   "Suggested providers": "Vorgeschlagene Anbieter",
   "Custom issuer": "Eigener Issuer",
   "Back to provider list": "Zurück zur Anbieter-Liste",
@@ -87,6 +87,16 @@ const enToDe = {
 
 Object.assign(enToDe, {
   Notice: "Hinweis",
+  "Copy item": "Element kopieren",
+  "Saving...": "Wird gespeichert...",
+  "No preview available.": "Keine Vorschau verfügbar.",
+  "Failed to create folder.": "Ordner konnte nicht erstellt werden.",
+  "Failed to create file.": "Datei konnte nicht erstellt werden.",
+  "Failed to save file changes.": "Dateiänderungen konnten nicht gespeichert werden.",
+  "Failed to load ACL.": "ACL konnte nicht geladen werden.",
+  "Sharing failed.": "Teilen fehlgeschlagen.",
+  "Failed to remove access.": "Zugriff konnte nicht entzogen werden.",
+  "Move/Copy failed.": "Verschieben oder Kopieren fehlgeschlagen.",
   Create: "Erstellen",
   "Create Folder": "Ordner erstellen",
   "Folder name": "Ordnername",
@@ -100,7 +110,8 @@ Object.assign(enToDe, {
   Move: "Verschieben",
   "Move item": "Element verschieben",
   "Name:": "Name:",
-  "Pod root": "Pod-Wurzel",
+  "Pod root": "Pod Root",
+  "Pod Root": "Pod Root",
   "Save changes": "Änderungen speichern",
   "Size:": "Größe:",
   "Target folder URL": "Zielordner-URL",
@@ -189,12 +200,17 @@ export function translateText(value, language) {
   const body = value.trim();
   const target = normalizeLanguage(language);
   if (target === "de") {
-    return enToDe[body] ? withOriginalWhitespace(value, enToDe[body]) : value;
+    return Object.prototype.hasOwnProperty.call(enToDe, body) ? withOriginalWhitespace(value, enToDe[body]) : value;
   }
-  return deToEn[body] ? withOriginalWhitespace(value, deToEn[body]) : value;
+  return Object.prototype.hasOwnProperty.call(deToEn, body) ? withOriginalWhitespace(value, deToEn[body]) : value;
 }
 
 function translateNode(node, language) {
+  // User data and code are not UI copy. Respect the HTML translation boundary
+  // across embedded apps as well as in the standalone document.
+  // https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/translate
+  const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+  if (element?.closest('[translate="no"], .notranslate, [data-i18n-skip], [contenteditable]:not([contenteditable="false"])')) return;
   if (!node) return;
   if (node.nodeType === Node.TEXT_NODE) {
     const next = translateText(node.nodeValue || "", language);
@@ -214,10 +230,12 @@ function translateNode(node, language) {
   node.childNodes.forEach((child) => translateNode(child, language));
 }
 
-function applyDocumentTranslations(language) {
-  if (typeof document === "undefined" || !document.body) return;
+export function applyDocumentTranslations(language, root) {
+  if (typeof document === "undefined") return;
+  const targetRoot = root || document.body;
+  if (!targetRoot) return;
   document.documentElement.lang = normalizeLanguage(language);
-  translateNode(document.body, language);
+  translateNode(targetRoot, language);
 }
 
 function installDomTranslator(getLanguage) {

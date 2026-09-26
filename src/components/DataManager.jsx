@@ -198,7 +198,7 @@ function TopHeader({ headerUser, onLogout }) {
     <div className="toolbar toolbar--title">
       <div className="crumb">
         <FontAwesomeIcon icon={faFolder} className="crumb-icon" />
-        <span>Solid <span className="crumb-highlight">Data</span> Manager</span>
+        <span translate="no">Solid <span className="crumb-highlight">Data</span> Manager</span>
       </div>
       <div className="toolbar-title-right">
         {showUser ? (
@@ -210,7 +210,7 @@ function TopHeader({ headerUser, onLogout }) {
                 </div>
               ) : null}
               <div className="toolbar-user-meta">
-                <span className="toolbar-user-name">
+                <span className="toolbar-user-name" translate={headerUser.name ? "no" : undefined}>
                   {displayName} ({podLabel})
                 </span>
               </div>
@@ -298,10 +298,10 @@ function FilesView({
                 />
               )}
               {index === crumbs.length - 1 ? (
-                <span>{crumb.name}</span>
+                <span translate="no">{crumb.name}</span>
               ) : (
                 <span
-                  className="crumb-link"
+                  className="crumb-link" translate="no"
                   onClick={() => navigateTo(crumb.url)}
                 >
                   {crumb.name}
@@ -435,7 +435,7 @@ function FilesView({
                               icon={faFolder}
                               className="file-icon folder"
                             />
-                            <span className="file-name-text">{name}</span>
+                            <span className="file-name-text" translate="no">{name}</span>
                           </span>
                         ) : (
                           <span className="file-name-action">
@@ -443,7 +443,7 @@ function FilesView({
                               icon={faFile}
                               className="file-icon file"
                             />
-                            <span className="file-name-text">{name}</span>
+                            <span className="file-name-text" translate="no">{name}</span>
                           </span>
                         )}
                       </td>
@@ -673,7 +673,7 @@ export default function DataManager({ webId, headerUser, onLogout }) {
     const root = new URL(rootUrl);
     const relative = url.pathname.replace(root.pathname, "");
     const parts = relative.split("/").filter(Boolean);
-    const crumbs = [{ name: "Pod root", url: rootUrl }];
+    const crumbs = [{ name: "Pod Root", url: rootUrl }];
     parts.forEach((part, idx) => {
       const partUrl = rootUrl + parts.slice(0, idx + 1).join("/") + "/";
       crumbs.push({ name: decodeURIComponent(part), url: partUrl });
@@ -1281,7 +1281,7 @@ export default function DataManager({ webId, headerUser, onLogout }) {
             </div>
             <div className="modal-body">
               <div className="preview-meta">
-                <div><strong>Name:</strong> {previewItem.name}</div>
+                <div><strong>Name:</strong> <span translate="no">{previewItem.name}</span></div>
                 <div><strong>Type:</strong> {getItemType(previewItem)}</div>
                 <div><strong>Size:</strong> {formatBytes(previewItem.size)}</div>
               </div>

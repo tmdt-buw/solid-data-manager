@@ -10,7 +10,7 @@ import {
   saveAclFor,
 } from "@inrupt/solid-client";
 import session from "../solidSession";
-import { translateText } from "../i18n";
+import { applyDocumentTranslations, translateText } from "../i18n";
 import DataManager from "./DataManager";
 
 jest.mock("@inrupt/solid-client", () => ({
@@ -162,8 +162,8 @@ test("preserves file metadata while omitting folder metadata requests", async ()
   expect(session.fetch).toHaveBeenCalledWith(fileUrl, expect.objectContaining({ method: "HEAD" }));
 });
 
-test("translates the application loading copy", () => {
-  expect(translateText("Solid Data Manager", "de")).toBe("Solid Datenmanager");
+test("translates the application loading copy while preserving the application name", () => {
+  expect(translateText("Solid Data Manager", "de")).toBe("Solid Data Manager");
   expect(translateText("Loading your personal Pod workspace …", "de")).toBe(
     "Dein persönlicher Pod-Bereich wird geladen …"
   );
@@ -332,7 +332,7 @@ test("keeps the parent breadcrumb and listing when opening a folder returns 403"
   ).toBeInTheDocument();
 
   const breadcrumb = container.querySelector(".data-manager-main .crumb");
-  expect(breadcrumb).toHaveTextContent("Pod root");
+  expect(breadcrumb).toHaveTextContent("Pod Root");
   expect(breadcrumb).not.toHaveTextContent("restricted");
   expect(screen.getByRole("button", { name: "restricted" })).toBeInTheDocument();
 });
@@ -502,4 +502,32 @@ test("uses the visited set to delete duplicate contained resources only once", a
   expect(deleteFile.mock.invocationCallOrder[0]).toBeLessThan(
     deleteContainer.mock.invocationCallOrder[0]
   );
+});
+
+test("keeps exact folder and file names when changing language and navigating", async () => {
+  const folder = ROOT_URL + "Settings/";
+  const file = folder + "Profile";
+  getSolidDataset.mockImplementation(async url => {
+    if (url === ROOT_URL) return datasetWith(folder, ROOT_URL + "settings/", ROOT_URL + "Speichern");
+    if (url === folder) return datasetWith(file);
+    throw new Error("Unexpected URL: " + url);
+  });
+  const { container } = render(<DataManager webId={WEB_ID} />);
+  await screen.findByRole("button", { name: "Settings", exact: true });
+  act(() => applyDocumentTranslations("de", container));
+  expect(screen.getByRole("button", { name: "Settings", exact: true })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "settings", exact: true })).toBeInTheDocument();
+  expect(screen.getByText("Speichern", { selector: ".file-name-text" })).toBeInTheDocument();
+  expect(container.querySelector(".data-manager-main .crumb")).toHaveTextContent("Pod Root");
+  fireEvent.click(screen.getByRole("button", { name: "Settings", exact: true }));
+  await screen.findByText("Profile", { selector: ".file-name-text" });
+  for (const language of ["de", "en"]) {
+    act(() => applyDocumentTranslations(language, container));
+    expect(screen.getByText("Profile", { selector: ".file-name-text" })).toBeInTheDocument();
+    expect(container.querySelector(".data-manager-main .crumb")).toHaveTextContent("Pod RootSettings");
+  }
+  expect(getSolidDataset).toHaveBeenLastCalledWith(folder, expect.any(Object));
+  expect(session.fetch).toHaveBeenCalledWith(file, expect.objectContaining({ method: "HEAD" }));
+  expect(overwriteFile).not.toHaveBeenCalled();
+  expect(createContainerAt).not.toHaveBeenCalled();
 });
