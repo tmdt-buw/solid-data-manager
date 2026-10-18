@@ -17,6 +17,7 @@ import {
   saveAclFor,
 } from "@inrupt/solid-client";
 import session from "../solidSession";
+import { renameResource } from "../renameResource";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faFolder,
@@ -45,7 +46,7 @@ const noCacheFetch = (input, init = {}) =>
   session.fetch(input, {
     ...init,
     cache: "no-store",
-    headers: { ...(init.headers || {}), "Cache-Control": "no-cache" }
+    headers: (() => { const headers = new Headers(init.headers); headers.set("Cache-Control", "no-cache"); return headers; })()
   });
 
 function getHttpStatus(error) {
@@ -821,18 +822,9 @@ export default function DataManager({ webId, headerUser, onLogout }) {
   };
 
   const performRename = async (url, newName) => {
-    if (!newName) return;
-    const newUrl = currentUrl + newName + (url.endsWith("/") ? "/" : "");
     try {
-      const res = await noCacheFetch(url);
-      const data = await res.blob();
-      await overwriteFile(newUrl, data, {
-        contentType: res.headers.get("Content-Type") || "application/octet-stream",
-        fetch: noCacheFetch,
-      });
-      if (url.endsWith("/")) await deleteContainer(url, { fetch: noCacheFetch });
-      else await deleteFile(url, { fetch: noCacheFetch });
-      await loadItems(currentUrl);
+      await renameResource({ url, parentUrl: currentUrl, name: newName,
+        fetcher: noCacheFetch, write: overwriteFile, remove: deleteFile, reload: loadItems });
     } catch {
       showAlert("Rename failed.");
     }

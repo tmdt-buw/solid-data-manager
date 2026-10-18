@@ -156,7 +156,9 @@ jobs:
           context: ./
           file: ./Dockerfile
           push: true
+          labels: org.opencontainers.image.revision=${{ github.sha }}
           tags: |
+            son1i/solid-data-manager:sha-${{ github.sha }}
             son1i/solid-data-manager:latest
             son1i/solid-data-manager:${{ steps.package-version.outputs.package_version }}
       - name: Wait for package and trigger solid-dataspace-manager rebuild
