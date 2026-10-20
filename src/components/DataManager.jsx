@@ -32,6 +32,12 @@ import {
   faCopy,
   faRightFromBracket,
   faMagnifyingGlass,
+  faFolderPlus,
+  faFileCirclePlus,
+  faFileCsv,
+  faFileCode,
+  faFileImage,
+  faFilePdf,
 } from "@fortawesome/free-solid-svg-icons";
 import "./DataManager.css";
 import CreateFolderModal from "./CreateFolderModal";
@@ -268,206 +274,128 @@ function ContentLoadingState({ variant = "files" }) {
   );
 }
 
+function fileVisual(item) {
+  if (item.isFolder) return { icon: faFolder, tone: "folder" };
+  const ext = getExtension(item.name);
+  if (["csv", "xls", "xlsx"].includes(ext)) return { icon: faFileCsv, tone: "table" };
+  if (["json", "jsonld", "ttl", "xml", "nt", "nq", "rdf"].includes(ext)) return { icon: faFileCode, tone: "code" };
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) return { icon: faFileImage, tone: "image" };
+  if (ext === "pdf") return { icon: faFilePdf, tone: "pdf" };
+  return { icon: faFile, tone: "document" };
+}
+
 function FilesView({
-  items,
-  loading,
-  uploadFile,
-  navigateTo,
-  crumbs,
-  onRowSelect,
-  onRowContextMenu,
-  onDropOnFolder,
-  onDragStartRow,
-  searchQuery,
-  onSearchQueryChange,
-  selectedItems,
-  onNewFolder,
-  onNewFile,
-  onHeaderAction,
+  items, loading, uploadFile, navigateTo, crumbs, onRowSelect,
+  onRowContextMenu, onDropOnFolder, onDragStartRow, searchQuery,
+  onSearchQueryChange, selectedItems, onNewFolder, onNewFile, onHeaderAction,
 }) {
-  const visibleItems = items;
+  const { t, language } = useI18n();
+  const primary = items.find(item => selectedItems.has(item.url));
+  const selection = [
+    { action: "preview", label: "Preview", icon: faEye, disabled: !primary || primary.isFolder },
+    { action: "rename", label: "Rename", icon: faPen, disabled: !primary },
+    { action: "download", label: "Download", icon: faDownload, disabled: !primary },
+    { action: "share", label: "Share", icon: faShareNodes, disabled: !primary },
+    { action: "delete", label: "Delete", icon: faTrash, disabled: !primary },
+  ];
   return (
     <>
-      <div className="toolbar">
-        <div className="crumb">
+      <div className="sdm-toolbar">
+        <label className="sdm-search">
+          <FontAwesomeIcon icon={faMagnifyingGlass} aria-hidden="true" />
+          <input type="search" aria-label={t("Search files...")} placeholder={t("Search files...")}
+            value={searchQuery} onChange={event => onSearchQueryChange(event.target.value)} />
+        </label>
+        <div className="sdm-create-actions">
+          <button type="button" onClick={onNewFolder} className="sdm-button" title={t("New folder")}>
+            <FontAwesomeIcon icon={faFolderPlus} /><span>{t("New folder")}</span>
+          </button>
+          <button type="button" onClick={onNewFile} className="sdm-button" title={t("New file")}>
+            <FontAwesomeIcon icon={faFileCirclePlus} /><span>{t("New file")}</span>
+          </button>
+          <button type="button" onClick={uploadFile} className="sdm-button sdm-button--primary" title={t("Upload file")}>
+            <FontAwesomeIcon icon={faUpload} /><span>{t("Upload")}</span>
+          </button>
+        </div>
+      </div>
+      <div className="sdm-location-bar">
+        <nav className="crumb sdm-breadcrumbs" aria-label={t("Folder navigation")}>
           {crumbs.map((crumb, index) => (
             <React.Fragment key={crumb.url}>
-              {index > 0 && (
-                <FontAwesomeIcon
-                  icon={faChevronRight}
-                  className="crumb-separator"
-                />
-              )}
+              {index > 0 && <FontAwesomeIcon icon={faChevronRight} className="crumb-separator" aria-hidden="true" />}
               {index === crumbs.length - 1 ? (
-                <span translate="no">{crumb.name}</span>
+                <span className="sdm-current-folder" aria-current="page" translate="no">{index === 0 && <FontAwesomeIcon icon={faFolder} />}{crumb.name}</span>
               ) : (
-                <span
-                  className="crumb-link" translate="no"
-                  onClick={() => navigateTo(crumb.url)}
-                >
-                  {crumb.name}
-                </span>
+                <button type="button" className="crumb-link" translate="no" onClick={() => navigateTo(crumb.url)}>
+                  {index === 0 && <FontAwesomeIcon icon={faFolder} />}{crumb.name}
+                </button>
               )}
             </React.Fragment>
           ))}
-        </div>
-        <div className="primary-actions">
-          <div className="header-actions">
-            <button
-              className="icon-btn icon-btn--ghost"
-              title="Preview"
-              onClick={() => onHeaderAction("preview")}
-              disabled={selectedItems.size === 0}
-            >
-              <FontAwesomeIcon icon={faEye} />
+        </nav>
+        <span className="sdm-item-count"><strong>{items.length}</strong> {t(items.length === 1 ? "item" : "items")}</span>
+      </div>
+      <div className={`sdm-selection-bar${selectedItems.size ? " has-selection" : ""}`}>
+        <span className="sdm-selection-caption" aria-live="polite">
+          {selectedItems.size ? <><strong>{selectedItems.size}</strong> {t("selected")}</> : t("Select files to manage them")}
+        </span>
+        <div className="header-actions" role="group" aria-label={t("File actions")}>
+          {selection.map(({ action, label, icon, disabled }) => (
+            <button key={action} type="button" className={`sdm-file-action${action === "delete" ? " sdm-file-action--danger" : ""}`}
+              title={t(label)} aria-label={t(label)} onClick={() => onHeaderAction(action)} disabled={disabled}>
+              <FontAwesomeIcon icon={icon} /><span>{t(label)}</span>
             </button>
-            <button
-              className="icon-btn icon-btn--ghost"
-              title="Rename"
-              onClick={() => onHeaderAction("rename")}
-              disabled={selectedItems.size === 0}
-            >
-              <FontAwesomeIcon icon={faPen} />
-            </button>
-            <button
-              className="icon-btn icon-btn--ghost"
-              title="Download"
-              onClick={() => onHeaderAction("download")}
-              disabled={selectedItems.size === 0}
-            >
-              <FontAwesomeIcon icon={faDownload} />
-            </button>
-            <button
-              className="icon-btn icon-btn--ghost"
-              title="Share"
-              onClick={() => onHeaderAction("share")}
-              disabled={selectedItems.size === 0}
-            >
-              <FontAwesomeIcon icon={faShareNodes} />
-            </button>
-            <button
-              className="icon-btn icon-btn--ghost"
-              title="Delete"
-              onClick={() => onHeaderAction("delete")}
-              disabled={selectedItems.size === 0}
-            >
-              <FontAwesomeIcon icon={faTrash} />
-            </button>
-          </div>
-          <button onClick={onNewFolder} className="pill-btn" title="New folder">
-            <FontAwesomeIcon icon={faFolder} /> <span>New folder</span>
-          </button>
-          <button onClick={onNewFile} className="pill-btn" title="New file">
-            <FontAwesomeIcon icon={faFile} /> <span>New file</span>
-          </button>
-          <button onClick={uploadFile} className="pill-btn" title="Upload file">
-            <FontAwesomeIcon icon={faUpload} /> <span>Upload</span>
-          </button>
-          <div className="data-search data-search--inline">
-            <input
-              type="text"
-              placeholder="Search files..."
-              value={searchQuery}
-              onChange={(e) => onSearchQueryChange(e.target.value)}
-            />
-            <span className="data-search-icon" aria-hidden="true">
-              <FontAwesomeIcon icon={faMagnifyingGlass} />
-            </span>
-          </div>
+          ))}
         </div>
       </div>
-      {loading ? (
-        <ContentLoadingState />
-      ) : (
-        <>
-          <div className="file-table-container">
-            <table className="file-table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Type</th>
-                  <th>Size</th>
-                  <th>Last Modified</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleItems.map((item, index) => {
-                  const { url, lastModified, isFolder, name, size } = item;
-                  return (
-                    <tr
-                      key={url}
-                      draggable={!isFolder}
-                      className={selectedItems.has(url) ? "row-selected" : ""}
-                      onDragStart={(event) => onDragStartRow(item, event)}
-                      onContextMenu={(event) => onRowContextMenu(item, event)}
-                      onDragOver={(event) => {
-                        if (isFolder) event.preventDefault();
-                      }}
-                      onDrop={(event) => {
-                        if (!isFolder) return;
-                        event.preventDefault();
-                        onDropOnFolder(url, event);
-                      }}
-                      onClick={(event) => {
-                        if (event.target.closest("button") || event.target.closest("input")) {
-                          return;
-                        }
-                        onRowSelect(item, index, event);
-                      }}
-                    >
-                      <td>
-                        {isFolder ? (
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            className="file-name-action file-name-action--folder"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              navigateTo(url);
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key !== "Enter" && event.key !== " ") return;
-                              event.preventDefault();
-                              event.stopPropagation();
-                              navigateTo(url);
-                            }}
-                          >
-                            <FontAwesomeIcon
-                              icon={faFolder}
-                              className="file-icon folder"
-                            />
-                            <span className="file-name-text" translate="no">{name}</span>
-                          </span>
-                        ) : (
-                          <span className="file-name-action">
-                            <FontAwesomeIcon
-                              icon={faFile}
-                              className="file-icon file"
-                            />
-                            <span className="file-name-text" translate="no">{name}</span>
-                          </span>
-                        )}
-                      </td>
-                      <td>{getItemType(item)}</td>
-                      <td>{formatBytes(size)}</td>
-                      <td>
-                        {lastModified
-                          ? new Date(lastModified).toLocaleString("de-DE", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "-"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </>
+      {loading ? <ContentLoadingState /> : (
+        <div className="file-table-container">
+          <table className="file-table" aria-label={t("Files and folders")}>
+            <thead><tr><th scope="col">{t("Name")}</th><th scope="col">{t("Type")}</th><th scope="col">{t("Size")}</th><th scope="col">{t("Last Modified")}</th></tr></thead>
+            <tbody>
+              {items.map((item, index) => {
+                const { url, lastModified, isFolder, name, size } = item;
+                const visual = fileVisual(item);
+                const selected = selectedItems.has(url);
+                return (
+                  <tr key={url} draggable={!isFolder} className={selected ? "row-selected" : ""}
+                    onDragStart={event => onDragStartRow(item, event)}
+                    onContextMenu={event => onRowContextMenu(item, event)}
+                    onDragOver={event => { if (isFolder) event.preventDefault(); }}
+                    onDrop={event => { if (!isFolder) return; event.preventDefault(); onDropOnFolder(url, event); }}
+                    onClick={event => { if (!event.target.closest("button, input, [role=button]")) onRowSelect(item, index, event); }}>
+                    <td className="sdm-name-cell">
+                      <div className="sdm-name-content">
+                        <input className="sdm-select-item" type="checkbox" checked={selected} aria-label={`${t("Select")}: ${name}`} translate="no"
+                          onChange={() => onRowSelect(item, index, { ctrlKey: true })} />
+                        <span className={`sdm-file-symbol sdm-file-symbol--${visual.tone}`} aria-hidden="true"><FontAwesomeIcon icon={visual.icon} /></span>
+                        <div className="sdm-file-copy">
+                          {isFolder ? (
+                            <button type="button" className="file-name-action file-name-action--folder" title={name} onClick={() => navigateTo(url)}>
+                              <span className="file-name-text" translate="no">{name}</span>
+                            </button>
+                          ) : <span className="file-name-action" title={name}><span className="file-name-text" translate="no">{name}</span></span>}
+                          <span className="sdm-mobile-meta">{t(getItemType(item))}{!isFolder && <> · {formatBytes(size)}</>}</span>
+                        </div>
+                        {isFolder && <FontAwesomeIcon icon={faChevronRight} className="sdm-folder-chevron" aria-hidden="true" />}
+                      </div>
+                    </td>
+                    <td className="sdm-type-cell"><span className={`sdm-type-tag sdm-type-tag--${visual.tone}`}>{t(getItemType(item))}</span></td>
+                    <td className="sdm-size-cell">{formatBytes(size)}</td>
+                    <td className="sdm-date-cell">{lastModified ? new Date(lastModified).toLocaleString(language === "de" ? "de-DE" : "en-GB", {
+                      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+                    }) : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {items.length === 0 && <div className="sdm-empty">
+            <span className="sdm-file-symbol sdm-file-symbol--folder"><FontAwesomeIcon icon={searchQuery ? faMagnifyingGlass : faFolder} /></span>
+            <h2>{t(searchQuery ? "No matching files" : "This folder is empty")}</h2>
+            <p>{t(searchQuery ? "Try another search term." : "Upload a file or create a folder to get started.")}</p>
+          </div>}
+        </div>
       )}
     </>
   );
@@ -1159,7 +1087,7 @@ export default function DataManager({ webId, headerUser, onLogout }) {
         onCreate={handleCreateFolder}
       />
       {newFileOpen && (
-        <div className="modal-overlay">
+        <div className="modal-overlay sdm-modal-overlay">
           <div className="modal-box">
             <div className="modal-header">
               <span className="modal-title">New file</span>
@@ -1244,7 +1172,7 @@ export default function DataManager({ webId, headerUser, onLogout }) {
       />
       {previewItem && (
         <div
-          className="modal-overlay"
+          className="modal-overlay sdm-modal-overlay"
           onClick={() => {
             setPreviewItem(null);
             setPreviewContent("");
@@ -1326,7 +1254,7 @@ export default function DataManager({ webId, headerUser, onLogout }) {
       )}
       {contextMenu && (
         <div
-          className="context-menu"
+          className="context-menu sdm-context-menu"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
           <button
@@ -1437,7 +1365,7 @@ export default function DataManager({ webId, headerUser, onLogout }) {
         </div>
       )}
       {moveCopyOpen && (
-        <div className="modal-overlay">
+        <div className="modal-overlay sdm-modal-overlay">
           <div className="modal-box">
             <div className="modal-header">
               <span className="modal-title">

@@ -23,7 +23,7 @@ const ShareFileModal = ({ show, onClose, onShare, onRemove, existing = [] }) => 
   if (!show) return null;
 
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay sdm-modal-overlay">
       <div className="modal-box">
         <div className="modal-header">
           <span className="modal-title">Share File</span>

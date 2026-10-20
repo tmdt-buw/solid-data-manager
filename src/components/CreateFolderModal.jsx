@@ -15,7 +15,7 @@ const CreateFolderModal = ({ show, onClose, onCreate }) => {
   if (!show) return null;
 
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay sdm-modal-overlay">
       <div className="modal-box">
         <div className="modal-header">
           <span className="modal-title">Create Folder</span>

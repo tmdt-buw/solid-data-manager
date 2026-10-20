@@ -362,3 +362,12 @@ body {
     justify-content: space-between;
   }
 }
+
+/* Keep file content readable while preserving the shared header scale. */
+@media (min-width: 900px) {
+  html:not(.browser-safari) .data-manager-layout,
+  html:not(.browser-safari) .sdm-modal-overlay,
+  html:not(.browser-safari) .sdm-context-menu {
+    zoom: calc(1 / var(--solid-data-manager-standalone-scale));
+  }
+}

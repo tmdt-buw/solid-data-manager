@@ -155,7 +155,7 @@ test("preserves file metadata while omitting folder metadata requests", async ()
   render(<DataManager webId={WEB_ID} />);
   const row = (await screen.findByText("notes.txt")).closest("tr");
   expect(within(row).getByText("123 B")).toBeInTheDocument();
-  expect(row).toHaveTextContent(new Date("Sun, 06 Sep 2026 13:17:49 GMT").toLocaleString("de-DE", {
+  expect(row).toHaveTextContent(new Date("Sun, 06 Sep 2026 13:17:49 GMT").toLocaleString("en-GB", {
     day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
   }));
   expect(session.fetch).toHaveBeenCalledTimes(1);
@@ -530,4 +530,23 @@ test("keeps exact folder and file names when changing language and navigating", 
   expect(session.fetch).toHaveBeenCalledWith(file, expect.objectContaining({ method: "HEAD" }));
   expect(overwriteFile).not.toHaveBeenCalled();
   expect(createContainerAt).not.toHaveBeenCalled();
+});
+
+test("checkboxes allow independent multi-selection without opening folders or changing files", async () => {
+  getSolidDataset.mockResolvedValue(datasetWith(ROOT_URL + "one.txt", ROOT_URL + "folder/"));
+  render(<DataManager webId={WEB_ID} />);
+  const first = await screen.findByRole("checkbox", { name: "Select: one.txt" });
+  const second = screen.getByRole("checkbox", { name: "Select: folder" });
+  fireEvent.click(first);fireEvent.click(second);
+  expect(first).toBeChecked();expect(second).toBeChecked();
+  expect(screen.getByText("selected").parentElement).toHaveTextContent("2 selected");
+  fireEvent.click(second);expect(first).toBeChecked();expect(second).not.toBeChecked();
+  expect(getSolidDataset).toHaveBeenCalledTimes(1);expect(overwriteFile).not.toHaveBeenCalled();
+});
+test("empty folders and empty search results explain the next step", async () => {
+  getSolidDataset.mockResolvedValue(datasetWith());render(<DataManager webId={WEB_ID} />);
+  expect(await screen.findByText("This folder is empty")).toBeInTheDocument();
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "missing" } });
+  expect(screen.getByText("No matching files")).toBeInTheDocument();
+  expect(screen.getByText("Try another search term.")).toBeInTheDocument();
 });

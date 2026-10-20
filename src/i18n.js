@@ -15,6 +15,19 @@ export const LANGUAGE_EVENT = "solid-dataspace-language-change";
 export const LANGUAGE_MESSAGE_TYPE = "solid-dataspace-language-change";
 
 const enToDe = {
+  "Folder navigation": "Ordnernavigation",
+  "item": "Element",
+  "items": "Elemente",
+  "selected": "ausgewählt",
+  "Select files to manage them": "Dateien zum Verwalten auswählen",
+  "File actions": "Dateiaktionen",
+  "Files and folders": "Dateien und Ordner",
+  "Select": "Auswählen",
+  "No matching files": "Keine passenden Dateien",
+  "This folder is empty": "Dieser Ordner ist leer",
+  "Try another search term.": "Versuche einen anderen Suchbegriff.",
+  "Upload a file or create a folder to get started.": "Lade eine Datei hoch oder erstelle einen Ordner.",
+
   Language: "Sprache",
   English: "Englisch",
   German: "Deutsch",
