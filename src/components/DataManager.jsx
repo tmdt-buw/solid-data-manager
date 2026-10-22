@@ -47,6 +47,7 @@ import AlertModal from "./AlertModal";
 import ConfirmModal from "./ConfirmModal";
 import { appVersion } from "../version";
 import { useI18n } from "../i18n";
+import { readCompressedJson } from "../readCompressedJson";
 
 const noCacheFetch = (input, init = {}) =>
   session.fetch(input, {
@@ -143,6 +144,8 @@ function guessContentType(filename, fallback = "application/octet-stream") {
       return "text/turtle";
     case "json":
       return "application/json";
+    case "gz":
+      return "application/gzip";
     case "csv":
       return "text/csv";
     case "png":
@@ -189,6 +192,7 @@ function isEditablePreview(item) {
 
 function getItemType(item) {
   if (item.isFolder) return "Folder";
+  if (item.name.toLowerCase().endsWith('.json.gz')) return 'JSON (Gzip)';
   const ext = getExtension(item.name);
   if (!ext) return "Other";
   if (["json", "csv", "ttl"].includes(ext)) return ext.toUpperCase();
@@ -888,9 +892,17 @@ export default function DataManager({ webId, headerUser, onLogout }) {
     if (!item || item.isFolder) return;
     setPreviewLoading(true);
     try {
-      const res = await noCacheFetch(item.url);
+      const compressed = item.name.toLowerCase().endsWith('.json.gz');
+      const res = await noCacheFetch(item.url, compressed ? { headers: { Accept: 'application/gzip, application/x-gzip, application/octet-stream, application/json' } } : {});
       if (!res.ok) throw new Error("Preview failed.");
       const ext = getExtension(item.name);
+      if (compressed) {
+        const text = JSON.stringify(await readCompressedJson(res), null, 2);
+        setPreviewContent(text.length > 50000 ? text.slice(0, 50000) + '\n…' : text);
+        setPreviewEditableContent('');
+        setPreviewEditMode(false);
+        return;
+      }
       const text = await res.text();
       if (ext === "json") {
         try {
