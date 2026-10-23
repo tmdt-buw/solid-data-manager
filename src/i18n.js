@@ -39,6 +39,11 @@ const enToDe = {
   Confirm: "Bestätigen",
   Delete: "Löschen",
   Download: "Herunterladen",
+  "Copy link": "Link kopieren",
+  "Link copied": "Link kopiert",
+  "File URL": "Datei-URL",
+  "Your browser could not copy the link automatically. Copy the URL below.":
+    "Dein Browser konnte den Link nicht automatisch kopieren. Kopiere die URL unten.",
   Preview: "Vorschau",
   Rename: "Umbenennen",
   Share: "Teilen",

@@ -27,6 +27,8 @@ import {
   faTrash,
   faDownload,
   faShareNodes,
+  faLink,
+  faCheck,
   faChevronRight,
   faEye,
   faCopy,
@@ -291,14 +293,16 @@ function fileVisual(item) {
 function FilesView({
   items, loading, uploadFile, navigateTo, crumbs, onRowSelect,
   onRowContextMenu, onDropOnFolder, onDragStartRow, searchQuery,
-  onSearchQueryChange, selectedItems, onNewFolder, onNewFile, onHeaderAction,
+  onSearchQueryChange, selectedItems, onNewFolder, onNewFile, onHeaderAction, copiedUrl,
 }) {
   const { t, language } = useI18n();
   const primary = items.find(item => selectedItems.has(item.url));
+  const linkCopied = Boolean(primary && selectedItems.size === 1 && copiedUrl === primary.url);
   const selection = [
     { action: "preview", label: "Preview", icon: faEye, disabled: !primary || primary.isFolder },
     { action: "rename", label: "Rename", icon: faPen, disabled: !primary },
     { action: "download", label: "Download", icon: faDownload, disabled: !primary },
+    { action: "copy-link", label: "Copy link", icon: linkCopied ? faCheck : faLink, disabled: selectedItems.size !== 1 || !primary || primary.isFolder },
     { action: "share", label: "Share", icon: faShareNodes, disabled: !primary },
     { action: "delete", label: "Delete", icon: faTrash, disabled: !primary },
   ];
@@ -341,7 +345,7 @@ function FilesView({
       </div>
       <div className={`sdm-selection-bar${selectedItems.size ? " has-selection" : ""}`}>
         <span className="sdm-selection-caption" aria-live="polite">
-          {selectedItems.size ? <><strong>{selectedItems.size}</strong> {t("selected")}</> : t("Select files to manage them")}
+          {linkCopied ? t("Link copied") : selectedItems.size ? <><strong>{selectedItems.size}</strong> {t("selected")}</> : t("Select files to manage them")}
         </span>
         <div className="header-actions" role="group" aria-label={t("File actions")}>
           {selection.map(({ action, label, icon, disabled }) => (
@@ -379,7 +383,7 @@ function FilesView({
                               <span className="file-name-text" translate="no">{name}</span>
                             </button>
                           ) : <span className="file-name-action" title={name}><span className="file-name-text" translate="no">{name}</span></span>}
-                          <span className="sdm-mobile-meta">{t(getItemType(item))}{!isFolder && <> · {formatBytes(size)}</>}</span>
+                          <span className="sdm-mobile-meta">{t(getItemType(item))}{!isFolder && <>, {formatBytes(size)}</>}</span>
                         </div>
                         {isFolder && <FontAwesomeIcon icon={faChevronRight} className="sdm-folder-chevron" aria-hidden="true" />}
                       </div>
@@ -406,11 +410,13 @@ function FilesView({
 }
 
 export default function DataManager({ webId, headerUser, onLogout }) {
+  const { t } = useI18n();
   const [currentUrl, setCurrentUrl] = useState("");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItems, setSelectedItems] = useState(new Set());
+  const [copiedLink, setCopiedLink] = useState(null);
   const [previewItem, setPreviewItem] = useState(null);
   const [previewContent, setPreviewContent] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -445,6 +451,27 @@ export default function DataManager({ webId, headerUser, onLogout }) {
     setAlertMessage(msg);
     setAlertOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (!copiedLink) return undefined;
+    const timer = window.setTimeout(() => setCopiedLink(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [copiedLink]);
+
+  const copyFileLink = async (item) => {
+    if (!item || item.isFolder) return;
+    setCopiedLink(null);
+    try {
+      await navigator.clipboard.writeText(item.url);
+      setCopiedLink({ url: item.url });
+    } catch {
+      showAlert(<>
+        {t("Your browser could not copy the link automatically. Copy the URL below.")}
+        <input type="text" className="form-control sdm-copy-link-url" value={item.url} readOnly autoFocus
+          aria-label={t("File URL")} translate="no" onFocus={event => event.target.select()} />
+      </>);
+    }
+  };
 
   const loadItems = useCallback(async (url, options = {}) => {
     const { commitUrl = false, reportError = true } = options;
@@ -1062,6 +1089,7 @@ export default function DataManager({ webId, headerUser, onLogout }) {
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             selectedItems={selectedItems}
+            copiedUrl={copiedLink?.url}
             onNewFolder={() => setFolderModalOpen(true)}
             onNewFile={() => setNewFileOpen(true)}
             onHeaderAction={(action) => {
@@ -1080,6 +1108,10 @@ export default function DataManager({ webId, headerUser, onLogout }) {
               }
               if (action === "download") {
                 downloadFiles(selected);
+                return;
+              }
+              if (action === "copy-link") {
+                if (selected.length === 1) copyFileLink(item);
                 return;
               }
               if (action === "share") {

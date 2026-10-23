@@ -44,7 +44,7 @@
 .sdm-selection-bar.has-selection { border-color: #c5dbfa; background: #edf4ff; }
 .sdm-selection-caption { display: inline-flex; gap: 4px; align-items: center; color: var(--sdm-muted); font-size: 12px; }
 .sdm-selection-bar.has-selection .sdm-selection-caption { display: inline-flex; gap: 4px; align-items: center; color: #285b9b; }
-.data-manager-layout .header-actions { display: flex; align-items: center; flex-shrink: 0; gap: 4px; border: 0; padding: 0; }
+.data-manager-layout .header-actions { display: flex; flex-wrap: wrap; align-items: center; flex-shrink: 0; gap: 4px; border: 0; padding: 0; }
 .data-manager-layout .sdm-file-action { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; margin: 0; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: #486284; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
 .data-manager-layout .sdm-file-action:hover:not(:disabled) { color: #1769e8; background: #e3eeff; }
 .data-manager-layout .sdm-file-action--danger:hover:not(:disabled) { color: #b42332; background: #fff0f0; }
@@ -86,6 +86,7 @@
 .sdm-empty h2 { margin: 20px 0 8px; color: #23344f; font-size: 18px; font-weight: 750; }
 .sdm-empty p { margin: 0; max-width: 340px; color: #738096; font-size: 13px; line-height: 1.6; }
 .sdm-modal-overlay .preview-modal { width: min(820px, 100%); }
+.sdm-copy-link-url { display: block; width: 100%; box-sizing: border-box; margin-top: 12px; }
 .sdm-modal-overlay .preview-meta { display: flex; flex-wrap: wrap; gap: 10px 24px; margin-bottom: 18px; font-size: 12px; color: #64748b; overflow-wrap: anywhere; }
 .sdm-modal-overlay .preview-meta strong { color: #334766; font-weight: 600; }
 .sdm-modal-overlay .preview-code { background: #f8fafd; color: #334766; border: 1px solid #e5eaf2; padding: 16px; border-radius: 10px; max-height: 50dvh; overflow: auto; overscroll-behavior: contain; font: 13px/1.7 ui-monospace, "Cascadia Code", Consolas, monospace; scrollbar-width: thin; }
@@ -119,8 +120,8 @@
 @container sdm (max-width: 390px) {
   .sdm-create-actions { grid-template-columns: 1fr 1fr; }
   .sdm-create-actions .sdm-button--primary { grid-column: 1 / -1; }
-  .sdm-selection-bar .header-actions { width: 100%; justify-content: space-between; }
-  .sdm-selection-bar .sdm-file-action { min-height: 44px; width: 44px; }
+  .sdm-selection-bar .header-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+  .sdm-selection-bar .sdm-file-action { min-height: 44px; width: 100%; }
   .sdm-item-count { font-size: 11px; }
 }
 @media (max-width: 760px) {
