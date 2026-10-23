@@ -133,11 +133,12 @@ const App = () => {
   if (!sessionActive) {
     return (
       <I18nProvider>
-        <div className="standalone-login-page">
+        <div className="standalone-login-page" data-standalone-shell>
           <LoginScreen
             onLogin={loginToSolid}
             languageControl={<LanguageSelect className="language-select--login" />}
           />
+          <FooterBar />
         </div>
       </I18nProvider>
     );
@@ -145,8 +146,7 @@ const App = () => {
 
   return (
     <I18nProvider>
-      <div className="container">
-        <LanguageSelect className="language-select--standalone" />
+      <div className="container" data-standalone-shell>
         <DataManager
           webId={webId}
           headerUser={{
@@ -156,6 +156,7 @@ const App = () => {
             webId,
           }}
           onLogout={handleLogout}
+          headerLanguage={<LanguageSelect compact />}
         />
         <div className="footer-spacer" />
         <FooterBar />

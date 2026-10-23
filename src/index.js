@@ -6,6 +6,11 @@ import reportWebVitals from "./reportWebVitals";
 import { restoreSession } from "./solidSession";
 import { markSafariBrowser } from "./safariDetection";
 
+
+import "./standalone/shell.css";
+import "./standalone/layout.css";
+document.body.classList.add("dataspace-standalone");
+
 markSafariBrowser();
 
 const rootElement = document.getElementById("root");

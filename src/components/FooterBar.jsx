@@ -1,27 +1,8 @@
 import React from "react";
-import "./FooterBar.css";
+import StandaloneFooter from "../standalone/StandaloneFooter";
 import { appVersion } from "../version";
-
-const FooterBar = ({ showLogos = true }) => {
-  return (
-    <footer className={`footer-bar${showLogos ? "" : " footer-bar--compact"}`}>
-      {showLogos && (
-        <div className="footer-logo-group">
-          <img
-            src={process.env.PUBLIC_URL + "/assets/images/Logo_BUW.png"}
-            alt="Logo BUW"
-            className="logo-small"
-          />
-          <img
-            src={process.env.PUBLIC_URL + "/assets/images/Logo_TMDT.png"}
-            alt="Logo TMDT"
-            className="logo-medium"
-          />
-        </div>
-      )}
-      <div className="footer-version">Solid Data Manager {appVersion}</div>
-    </footer>
-  );
-};
-
-export default FooterBar;
+import { useI18n } from "../i18n";
+export default function FooterBar() {
+  const { language } = useI18n();
+  return <StandaloneFooter title="Solid Data Manager" version={appVersion} language={language} assetsBase={process.env.PUBLIC_URL || ""} />;
+}

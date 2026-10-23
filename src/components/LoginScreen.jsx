@@ -1,10 +1,10 @@
+import LoginParticleCloud from "../standalone/LoginParticleCloud";
 import React, { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faFolderTree,
   faRightFromBracket,
 } from "@fortawesome/free-solid-svg-icons";
-import LoginParticleCloud from "./LoginParticleCloud";
 import "../LoginScreen.css";
 
 const providers = [
@@ -19,9 +19,9 @@ export default function LoginScreen({ onLogin, defaultIssuer, languageControl = 
   const issuerToLogin = useCustom ? customIssuer.trim() : selected;
 
   return (
-    <div className="login-screen">
-      <div className="login-wrap">
-        <div className="login-hero">
+    <div className="login-screen" data-standalone-login>
+      <div className="login-wrap" data-standalone-login-card>
+        <div className="login-hero" data-standalone-login-heading>
           <div className="login-hero-left">
             <div className="login-hero-icon">
               <FontAwesomeIcon icon={faFolderTree} />
@@ -34,7 +34,7 @@ export default function LoginScreen({ onLogin, defaultIssuer, languageControl = 
 
         <LoginParticleCloud label="Solid Data Manager" />
 
-        <div className="login-card">
+        <div className="login-card" data-standalone-login-form>
           <div className="login-section">
             <div className="section-head">
               <span className="section-title">Suggested providers</span>
@@ -88,7 +88,7 @@ export default function LoginScreen({ onLogin, defaultIssuer, languageControl = 
             </div>
           </div>
 
-          <div className="login-footer">
+          <div className="login-footer" data-standalone-login-actions>
             {languageControl}
             <button
               type="button"

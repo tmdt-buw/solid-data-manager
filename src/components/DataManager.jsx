@@ -202,21 +202,21 @@ function getItemType(item) {
   return ext.toUpperCase();
 }
 
-function TopHeader({ headerUser, onLogout }) {
+function TopHeader({ headerUser, onLogout, headerLanguage }) {
   const showUser = headerUser && onLogout;
   const showHeaderVersion = !showUser;
   const podLabel = headerUser?.webId || headerUser?.podHost || "Pod";
   const displayName = headerUser?.name || "Solid Pod User";
   return (
-    <div className="toolbar toolbar--title">
-      <div className="crumb">
+    <div className="toolbar toolbar--title" data-standalone-header={showUser ? true : undefined}>
+      <div className="crumb" data-standalone-brand={showUser ? true : undefined}>
         <FontAwesomeIcon icon={faFolder} className="crumb-icon" />
         <span translate="no">Solid <span className="crumb-highlight">Data</span> Manager</span>
       </div>
-      <div className="toolbar-title-right">
+      <div className="toolbar-title-right" data-standalone-actions={showUser ? true : undefined}>
         {showUser ? (
           <div className="toolbar-user">
-            <div className="toolbar-user-info">
+            <div className="toolbar-user-info" title={podLabel}>
               {headerUser.avatarUrl ? (
                 <div className="toolbar-user-avatar">
                   <img src={headerUser.avatarUrl} alt="Profile" />
@@ -224,10 +224,11 @@ function TopHeader({ headerUser, onLogout }) {
               ) : null}
               <div className="toolbar-user-meta">
                 <span className="toolbar-user-name" translate={headerUser.name ? "no" : undefined}>
-                  {displayName} ({podLabel})
+                  {displayName}
                 </span>
               </div>
             </div>
+            {headerLanguage}
             <button className="toolbar-logout" type="button" onClick={onLogout}>
               <FontAwesomeIcon icon={faRightFromBracket} />
               <span>Logout</span>
@@ -409,7 +410,7 @@ function FilesView({
   );
 }
 
-export default function DataManager({ webId, headerUser, onLogout }) {
+export default function DataManager({ webId, headerUser, onLogout, headerLanguage }) {
   const { t } = useI18n();
   const [currentUrl, setCurrentUrl] = useState("");
   const [items, setItems] = useState([]);
@@ -1021,7 +1022,7 @@ export default function DataManager({ webId, headerUser, onLogout }) {
 
   return (
     <>
-      <TopHeader headerUser={headerUser} onLogout={onLogout} />
+      <TopHeader headerUser={headerUser} onLogout={onLogout} headerLanguage={headerLanguage} />
       <div className="data-manager-layout">
         <div className="data-manager-main">
           <FilesView

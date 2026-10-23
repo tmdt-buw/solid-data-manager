@@ -1,0 +1,4 @@
+body.dataspace-standalone .container > .data-manager-layout { flex: 1 1 auto; min-height: 460px; width: calc(100% - 48px); margin: 24px; padding: 24px; }
+body.dataspace-standalone .footer-spacer { display: none; }
+body.dataspace-standalone [data-standalone-header] .toolbar-user { flex-wrap: wrap; justify-content: flex-end; }
+@media(max-width:700px) { body.dataspace-standalone .container > .data-manager-layout { width: calc(100% - 24px); margin: 12px; padding: 16px; } }
