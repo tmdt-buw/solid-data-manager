@@ -1,5 +1,3 @@
-import { Headers } from "node-fetch";
-global.Headers = Headers;
 import { renameResource } from "./renameResource";
 const url = "https://pod.example/alice/report.txt", parentUrl = "https://pod.example/alice/";
 function options(overrides = {}) {

@@ -50,6 +50,7 @@ import ConfirmModal from "./ConfirmModal";
 import { appVersion } from "../version";
 import { useI18n } from "../i18n";
 import { readCompressedJson } from "../readCompressedJson";
+import { createFolderArchive, downloadFileBlob, downloadName, saveDownload, downloadErrorMessage } from "../downloadResources";
 
 const noCacheFetch = (input, init = {}) =>
   session.fetch(input, {
@@ -294,7 +295,7 @@ function fileVisual(item) {
 function FilesView({
   items, loading, uploadFile, navigateTo, crumbs, onRowSelect,
   onRowContextMenu, onDropOnFolder, onDragStartRow, searchQuery,
-  onSearchQueryChange, selectedItems, onNewFolder, onNewFile, onHeaderAction, copiedUrl,
+  onSearchQueryChange, selectedItems, onNewFolder, onNewFile, onHeaderAction, copiedUrl, downloading,
 }) {
   const { t, language } = useI18n();
   const primary = items.find(item => selectedItems.has(item.url));
@@ -302,7 +303,7 @@ function FilesView({
   const selection = [
     { action: "preview", label: "Preview", icon: faEye, disabled: !primary || primary.isFolder },
     { action: "rename", label: "Rename", icon: faPen, disabled: !primary },
-    { action: "download", label: "Download", icon: faDownload, disabled: !primary },
+    { action: "download", label: "Download", icon: faDownload, disabled: !primary || downloading },
     { action: "copy-link", label: "Copy link", icon: linkCopied ? faCheck : faLink, disabled: selectedItems.size !== 1 || !primary || primary.isFolder },
     { action: "share", label: "Share", icon: faShareNodes, disabled: !primary },
     { action: "delete", label: "Delete", icon: faTrash, disabled: !primary },
@@ -418,6 +419,9 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [copiedLink, setCopiedLink] = useState(null);
+  const [downloadProgress, setDownloadProgress] = useState(null);
+  const downloadControllerRef = useRef(null);
+  useEffect(() => () => downloadControllerRef.current?.abort(), [webId]);
   const [previewItem, setPreviewItem] = useState(null);
   const [previewContent, setPreviewContent] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -818,25 +822,31 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
 
   
 
-  const downloadFile = async (fileUrl) => {
-    try {
-      const response = await noCacheFetch(fileUrl);
-      const blob = await response.blob();
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = fileUrl.split("/").pop();
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch {
-      showAlert("Download failed.");
-    }
-  };
-
   const downloadFiles = async (urls) => {
-    for (const url of urls) {
-      if (url.endsWith("/")) continue;
-      await downloadFile(url);
+    if (!urls.length || downloadControllerRef.current) return;
+    const controller = new AbortController();
+    downloadControllerRef.current = controller;
+    setDownloadProgress({ files: 0, bytes: 0, current: "" });
+    try {
+      if (urls.some(url => url.endsWith("/"))) {
+        const archive = await createFolderArchive(urls, {
+          fetch: noCacheFetch, signal: controller.signal, onProgress: setDownloadProgress,
+        });
+        if (!controller.signal.aborted) saveDownload(archive.blob, archive.name);
+      } else {
+        for (const [index, url] of urls.entries()) {
+          setDownloadProgress({ files: index, bytes: 0, current: downloadName(url) });
+          const blob = await downloadFileBlob(url, { fetch: noCacheFetch, signal: controller.signal });
+          if (!controller.signal.aborted) saveDownload(blob, downloadName(url));
+        }
+      }
+    } catch (error) {
+      if (!controller.signal.aborted && !isAbortError(error)) showAlert(downloadErrorMessage(error));
+    } finally {
+      if (downloadControllerRef.current === controller) {
+        downloadControllerRef.current = null;
+        setDownloadProgress(null);
+      }
     }
   };
 
@@ -1091,6 +1101,7 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
             onSearchQueryChange={setSearchQuery}
             selectedItems={selectedItems}
             copiedUrl={copiedLink?.url}
+            downloading={Boolean(downloadProgress)}
             onNewFolder={() => setFolderModalOpen(true)}
             onNewFile={() => setNewFileOpen(true)}
             onHeaderAction={(action) => {
@@ -1124,6 +1135,14 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
               }
             }}
           />
+          {downloadProgress && <div className="sdm-download-progress">
+            <div role="status" aria-live="polite">
+              <strong>{t("Preparing download…")}</strong>
+              <span>{downloadProgress.files} {t("Files read")} / {formatBytes(downloadProgress.bytes)}</span>
+              <span className="sdm-download-current" translate="no">{downloadProgress.current}</span>
+            </div>
+            <button type="button" className="sdm-button" onClick={() => downloadControllerRef.current?.abort()}>{t("Cancel download")}</button>
+          </div>}
         </div>
       </div>
       <CreateFolderModal
@@ -1340,9 +1359,9 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
           >
             <FontAwesomeIcon icon={faPen} /> Rename
           </button>
-          {!contextMenu.item.isFolder && (
-            <button
+          <button
               type="button"
+              disabled={Boolean(downloadProgress)}
               onClick={() => {
                 setContextMenu(null);
                 const urls = selectedItems.has(contextMenu.item.url)
@@ -1353,7 +1372,6 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
             >
               <FontAwesomeIcon icon={faDownload} /> Download
             </button>
-          )}
           <button
             type="button"
             onClick={() => {

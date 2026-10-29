@@ -14,6 +14,18 @@ Solid Data Manager is a standalone React application for managing files in a Sol
 - Solid authentication integration (Inrupt client libraries)
 - SPA routing with static hosting support (Nginx)
 
+## Downloads
+
+Select a folder and choose **Download** in the selection toolbar or context menu
+to save a ZIP containing its files, subfolders and empty folders. A mixed
+selection of folders and files produces one ZIP; selecting only files keeps the
+individual file downloads. All reads use the current Solid session.
+
+A progress display offers cancellation. Unreadable or missing resources stop the
+archive download instead of silently producing an incomplete ZIP. Archives are
+limited to 256 MiB of input/output, 10,000 entries and 64 nested folder levels to
+bound browser memory and traversal. No Pod data or permissions are changed.
+
 ## Installation (Docker)
 
 ### Production
