@@ -17,6 +17,9 @@ import {
   saveAclFor,
 } from "@inrupt/solid-client";
 import session from "../solidSession";
+import { renameFolder, folderRenameTarget } from "../renameFolder";
+import { createRenameJournal, downloadRenameBackup } from "../folderRenameBackup";
+import { createRenameWorker } from "../folderRenameWorker";
 import { renameResource } from "../renameResource";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -448,6 +451,21 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
   const [alertOpen, setAlertOpen] = useState(false);
   const [alertMessage, setAlertMessage] = useState("");
   const rootUrlRef = useRef("");
+  const [lastRenameBackup, setLastRenameBackup] = useState(null);
+  const [renameProgress, setRenameProgress] = useState("");
+  const [pendingRenames, setPendingRenames] = useState([]);
+  const [resumeError, setResumeError] = useState("");
+  const renameBusy = useRef(false);
+  useEffect(() => { let active = true;
+    setPendingRenames([]); setLastRenameBackup(null);
+    createRenameJournal(webId).pending().then(rows => { if (active) setPendingRenames(rows); }).catch(() => {});
+    return () => { active = false; };
+  }, [webId]);
+  useEffect(() => {
+    const preventUnload = event => { if (renameBusy.current) { event.preventDefault(); event.returnValue = ""; } };
+    window.addEventListener("beforeunload", preventUnload);
+    return () => window.removeEventListener("beforeunload", preventUnload);
+  }, []);
   const lastSelectedIndexRef = useRef(null);
   const loadRequestIdRef = useRef(0);
   const loadAbortControllerRef = useRef(null);
@@ -638,7 +656,10 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
     const root = new URL(rootUrl);
     const relative = url.pathname.replace(root.pathname, "");
     const parts = relative.split("/").filter(Boolean);
-    const crumbs = [{ name: "Pod Root", url: rootUrl }];
+    const rootPart = root.pathname.split("/").filter(Boolean).pop();
+    let podName = rootPart || root.hostname.split(".")[0];
+    try { podName = decodeURIComponent(podName); } catch { /* Keep malformed names readable. */ }
+    const crumbs = [{ name: podName.replace(/[\\/]/g, ""), url: rootUrl }];
     parts.forEach((part, idx) => {
       const partUrl = rootUrl + parts.slice(0, idx + 1).join("/") + "/";
       crumbs.push({ name: decodeURIComponent(part), url: partUrl });
@@ -785,12 +806,33 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
     setRenameModalOpen(true);
   };
 
-  const performRename = async (url, newName) => {
+  const performRename = async (url, newName, recovery = null) => {
+    if (renameBusy.current) return;
+    renameBusy.current = true; setResumeError("");
     try {
-      await renameResource({ url, parentUrl: currentUrl, name: newName,
-        fetcher: noCacheFetch, write: overwriteFile, remove: deleteFile, reload: loadItems });
-    } catch {
-      showAlert("Rename failed.");
+      if (url.endsWith("/")) {
+        const target = recovery?.target || folderRenameTarget(url, currentUrl, newName, rootUrlRef.current);
+        if (decodeURIComponent(target) === decodeURIComponent(url)) return;
+        const journal = createRenameJournal(webId);
+        const worker = await createRenameWorker(noCacheFetch, webId);
+        if (worker.status.namespace && !url.startsWith(rootUrlRef.current + "connections/" + worker.status.namespace + "/")) throw Error("On Test, rename folders inside connections/test/ only.");
+        const pending = await journal.pending();
+        const record = recovery || pending.find(row => row.source === url && row.target === target);
+        if (pending.some(row => row.id !== record?.id)) throw Error("Finish the pending folder rename first.");
+        const completed = await renameFolder({ source: url, target, podRoot: rootUrlRef.current, webId, fetcher: noCacheFetch,
+          journal, worker, record, onProgress: setRenameProgress, backup: downloadRenameBackup });
+        await loadItems(recovery ? new URL("..", target).href : currentUrl, { commitUrl: Boolean(recovery) });
+        setLastRenameBackup(completed);
+      } else {
+        await renameResource({ url, parentUrl: currentUrl, name: newName,
+          fetcher: noCacheFetch, write: overwriteFile, remove: deleteFile, reload: loadItems });
+      }
+    } catch (error) {
+      if (error.partial) error.message = "Rename paused. Files and backup are retained. Use Resume rename to continue.";
+      throw error;
+    } finally {
+      renameBusy.current = false; setRenameProgress("");
+      createRenameJournal(webId).pending().then(setPendingRenames).catch(() => {});
     }
   };
 
@@ -799,6 +841,11 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
     setRenameModalOpen(false);
     setRenameTargetUrl("");
     setRenameCurrentName("");
+  };
+
+  const resumeRename = async record => {
+    try { await performRename(record.source, "", record); }
+    catch (error) { setResumeError(error.message); }
   };
 
   const uploadFile = async () => {
@@ -1207,7 +1254,21 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
         onRemove={handleRemoveShare}
         existing={shareAgents}
       />
+      {lastRenameBackup && <div className="sdm-rename-recovery" role="status"><strong>{t("Folder renamed")}</strong><div><button className="btn btn-secondary" onClick={() => downloadRenameBackup(lastRenameBackup)}>{t("Download backup")}</button><button className="btn btn-secondary" onClick={() => setLastRenameBackup(null)}>{t("Close")}</button></div></div>}
+      {renameProgress && !renameModalOpen && <div className="modal-overlay sdm-modal-overlay"><div className="modal-box" role="dialog" aria-modal="true" aria-label={t("Renaming...")}><p role="status">{t(renameProgress)}</p></div></div>}
+      {pendingRenames.length > 0 && <div className="sdm-rename-recovery" role="status">
+        <strong>{t("Unfinished folder rename")}</strong>
+        <p>{t("Files and a recovery backup have been retained. Resume the rename in this browser.")}</p>
+        {pendingRenames.map(record => <div key={record.id}>
+          <span>{decodeURIComponent(new URL(record.source).pathname)} → {decodeURIComponent(new URL(record.target).pathname)}</span>
+          <button className="btn btn-primary" disabled={!!renameProgress} onClick={() => resumeRename(record)}>{t("Resume rename")}</button>
+          <button className="btn btn-secondary" disabled={!record.resources?.length} onClick={() => downloadRenameBackup(record)}>{t("Download backup")}</button>
+        </div>)}
+        {renameProgress && <p>{t(renameProgress)}</p>}
+        {resumeError && <p role="alert">{t(resumeError)}</p>}
+      </div>}
       <RenameItemModal
+        progress={renameProgress}
         show={renameModalOpen}
         onClose={() => {
           setRenameModalOpen(false);

@@ -83,3 +83,13 @@ This project is licensed under the Apache License 2.0. See [LICENSE](LICENSE) an
 ## Citation
 
 If you use this repository, please cite it using the metadata in [CITATION.cff](CITATION.cff).
+
+### Renaming folders with contents
+
+Folder renames use authenticated Solid requests and the Data Connection relocation coordinator (`/sync-worker/participants/relocations`). The access gateway, worker, and Data Manager must be deployed together. The coordinator temporarily gates that owner's periodic connections, streams and managed imports, without changing enabled flags or schedules. A standalone deployment without this coordinator fails before changing Pod data.
+
+Before copying, the browser stores an IndexedDB recovery journal and downloads a ZIP containing original files, ACLs, metadata, affected catalog/connection documents and SHA-256 checksums. The worker retains its original encrypted import definitions in its relocation journal. The browser verifies copied bytes, preserves explicit and inherited WAC policies, updates same-Pod `catalog/` Turtle references and direct `connections/` and `connections/test/` configuration documents, and retargets managed-import destinations and source settings. Original files are deleted only after those steps, with conditional requests. Connection history index locations follow the rename; measurements and ordinary file contents remain unchanged.
+
+Keep the same browser profile for recovery. An interrupted operation appears as **Resume rename**; its writer gate does not expire automatically. Do not clear site storage while it is pending. A lost/conflicting journal requires operator recovery from the downloaded backup and the worker's `resource_moves` table. The coordinator has no authority over unrelated external writers or references in other Pods/applications; those need separate coordination.
+
+The preview worker restricts folder renames to `connections/test/` because Test and Prod share Pods. Pod roots, application system folders and the connection namespace roots cannot be renamed. A managed import must move as a whole target folder. Limits are 128 MiB of backed-up resources, 10,000 reads during discovery and 64 folder levels. Missing control rights, inaccessible references, conflicting destinations and concurrent changes stop the operation. Folder rename does not change the existing single-file rename behavior.

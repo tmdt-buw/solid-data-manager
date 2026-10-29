@@ -99,6 +99,7 @@ test.each([
   render(<DataManager webId={webId} />);
 
   expect(await screen.findByRole("button", { name: "documents" })).toBeInTheDocument();
+  expect(screen.getByRole("navigation", { name: "Folder navigation" })).toHaveTextContent(rootUrl === ROOT_URL ? "pod" : "solidtestpod");
   expect(screen.queryByRole("button", { name: "statistics", exact: true })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "statistics-backup" })).toBeInTheDocument();
   expect(screen.getByText("statistics.json")).toBeInTheDocument();
@@ -332,7 +333,7 @@ test("keeps the parent breadcrumb and listing when opening a folder returns 403"
   ).toBeInTheDocument();
 
   const breadcrumb = container.querySelector(".data-manager-main .crumb");
-  expect(breadcrumb).toHaveTextContent("Pod Root");
+  expect(breadcrumb).toHaveTextContent("pod");
   expect(breadcrumb).not.toHaveTextContent("restricted");
   expect(screen.getByRole("button", { name: "restricted" })).toBeInTheDocument();
 });
@@ -518,13 +519,13 @@ test("keeps exact folder and file names when changing language and navigating", 
   expect(screen.getByRole("button", { name: "Settings", exact: true })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "settings", exact: true })).toBeInTheDocument();
   expect(screen.getByText("Speichern", { selector: ".file-name-text" })).toBeInTheDocument();
-  expect(container.querySelector(".data-manager-main .crumb")).toHaveTextContent("Pod Root");
+  expect(container.querySelector(".data-manager-main .crumb")).toHaveTextContent("pod");
   fireEvent.click(screen.getByRole("button", { name: "Settings", exact: true }));
   await screen.findByText("Profile", { selector: ".file-name-text" });
   for (const language of ["de", "en"]) {
     act(() => applyDocumentTranslations(language, container));
     expect(screen.getByText("Profile", { selector: ".file-name-text" })).toBeInTheDocument();
-    expect(container.querySelector(".data-manager-main .crumb")).toHaveTextContent("Pod RootSettings");
+    expect(container.querySelector(".data-manager-main .crumb")).toHaveTextContent("podSettings");
   }
   expect(getSolidDataset).toHaveBeenLastCalledWith(folder, expect.any(Object));
   expect(session.fetch).toHaveBeenCalledWith(file, expect.objectContaining({ method: "HEAD" }));

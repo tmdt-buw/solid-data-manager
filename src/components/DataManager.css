@@ -316,3 +316,8 @@
 @media (max-width: 480px) {
   .sdm-download-progress { align-items: stretch; flex-direction: column; }
 }
+
+.sdm-rename-recovery { margin: 1rem; padding: 1rem; border: 1px solid #c6d9f7; border-radius: 12px; background: #f4f8ff; overflow-wrap: anywhere; }
+.sdm-rename-recovery > div { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin-top: .75rem; }
+.sdm-rename-recovery span { flex: 1 1 220px; }
+.sdm-rename-error { color: #a32c20; overflow-wrap: anywhere; }

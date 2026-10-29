@@ -27,7 +27,7 @@ module.exports = {
   ],
   external,
   plugins: [
-    resolve({ extensions }),
+    resolve({ extensions, browser: true, preferBuiltins: false }),
     commonjs(),
     postcss({
       extract: "embed.css",
