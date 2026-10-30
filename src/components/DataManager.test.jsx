@@ -6,6 +6,7 @@ import {
   deleteFile,
   getContainedResourceUrlAll,
   getSolidDataset,
+  getPodUrlAll,
   overwriteFile,
   saveAclFor,
 } from "@inrupt/solid-client";
@@ -15,6 +16,7 @@ import DataManager from "./DataManager";
 
 jest.mock("@inrupt/solid-client", () => ({
   getSolidDataset: jest.fn(),
+  getPodUrlAll: jest.fn(),
   getContainedResourceUrlAll: jest.fn(),
   deleteFile: jest.fn(),
   deleteContainer: jest.fn(),
@@ -82,6 +84,8 @@ async function confirmSelectedItemsDelete() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  window.history.replaceState(null, "", "/");
+  getPodUrlAll.mockImplementation(async webId => [webId.split("profile/")[0]]);
   getContainedResourceUrlAll.mockImplementation((dataset) => dataset.contained || []);
   session.fetch.mockResolvedValue(mockHeadResponse());
 });
@@ -550,4 +554,60 @@ test("empty folders and empty search results explain the next step", async () =>
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "missing" } });
   expect(screen.getByText("No matching files")).toBeInTheDocument();
   expect(screen.getByText("Try another search term.")).toBeInTheDocument();
+});
+
+test('a URI opens a folder on a storage host separate from the identity provider without writes', async () => {
+  const root = 'https://storage.example/alice/';
+  getPodUrlAll.mockResolvedValue([root]);
+  getSolidDataset.mockResolvedValue(datasetWith(root + 'documents/notes.txt'));
+  window.history.replaceState(null, '', '/?uri=' + encodeURIComponent(root + 'documents/'));
+  render(<DataManager webId="https://id.example/alice#me" />);
+  expect(await screen.findByText('notes.txt')).toBeInTheDocument();
+  expect(getSolidDataset).toHaveBeenCalledWith(root + 'documents/', expect.any(Object));
+  expect(screen.getByRole('navigation', { name: 'Folder navigation' })).toHaveTextContent('alice');
+  expect(createContainerAt).not.toHaveBeenCalled(); expect(saveAclFor).not.toHaveBeenCalled(); expect(overwriteFile).not.toHaveBeenCalled();
+});
+
+test('a file URI opens the containing folder and selects the file without downloading it', async () => {
+  const file = ROOT_URL + 'documents/my%20notes.csv';
+  getSolidDataset.mockResolvedValue(datasetWith(file, ROOT_URL + 'documents/other.txt'));
+  session.fetch.mockImplementation(async url => ({ ...mockHeadResponse(), ok: true, status: 200, url }));
+  render(<DataManager webId={WEB_ID} uri={file} />);
+  const row = (await screen.findByText('my notes.csv')).closest('tr');
+  expect(row).toHaveClass('row-selected');
+  expect(within(row).getByRole('checkbox')).toBeChecked();
+  expect(getSolidDataset).toHaveBeenCalledWith(ROOT_URL + 'documents/', expect.any(Object));
+  expect(session.fetch.mock.calls.every(([, init]) => init.method === 'HEAD')).toBe(true);
+  expect(saveAclFor).not.toHaveBeenCalled(); expect(overwriteFile).not.toHaveBeenCalled();
+});
+
+test('inaccessible deep links show an error and do not expose creation actions for an unresolved folder', async () => {
+  session.fetch.mockResolvedValue({ ...mockHeadResponse(), ok: false, status: 403 });
+  render(<DataManager webId={WEB_ID} uri={ROOT_URL + 'private.csv'} />);
+  expect(await screen.findByText('Access denied (403). You do not have permission to open this resource.')).toBeInTheDocument();
+  expect(screen.getByTitle('New file')).toBeDisabled();
+  expect(screen.getByTitle('New folder')).toBeDisabled();
+  expect(screen.getByTitle('Upload file')).toBeDisabled();
+  expect(getSolidDataset).not.toHaveBeenCalled(); expect(saveAclFor).not.toHaveBeenCalled();
+});
+
+test('popstate opens another linked folder without retaining the previous listing', async () => {
+  getSolidDataset.mockImplementation(async url => datasetWith(url + 'entry.txt'));
+  render(<DataManager webId={WEB_ID} />);
+  await screen.findByText('entry.txt');
+  window.history.pushState(null, '', '/?uri=' + encodeURIComponent(ROOT_URL + 'other/'));
+  act(() => window.dispatchEvent(new PopStateEvent('popstate')));
+  await waitFor(() => expect(getSolidDataset).toHaveBeenLastCalledWith(ROOT_URL + 'other/', expect.any(Object)));
+  expect(await screen.findByRole('navigation', { name: 'Folder navigation' })).toHaveTextContent('other');
+});
+
+test('keeps breadcrumbs safe while storage discovery has finished but the first folder is still loading', async () => {
+  const request = deferred();
+  getSolidDataset.mockReturnValue(request.promise);
+  const view = render(<DataManager webId={WEB_ID} />);
+  await waitFor(() => expect(getSolidDataset).toHaveBeenCalled());
+  view.rerender(<DataManager webId={WEB_ID} headerUser={{ name: 'Updated profile' }} />);
+  expect(screen.getByRole('progressbar')).toBeInTheDocument();
+  await act(async () => { request.resolve(datasetWith()); await request.promise; });
+  expect(await screen.findByRole('table')).toBeInTheDocument();
 });

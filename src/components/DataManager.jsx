@@ -17,6 +17,8 @@ import {
   saveAclFor,
 } from "@inrupt/solid-client";
 import session from "../solidSession";
+import { uriFromSearch } from "../navigationTarget";
+import { resolvePodNavigation, navigationErrorMessage } from "../podNavigation";
 import { renameFolder, folderRenameTarget } from "../renameFolder";
 import { createRenameJournal, downloadRenameBackup } from "../folderRenameBackup";
 import { createRenameWorker } from "../folderRenameWorker";
@@ -298,9 +300,16 @@ function fileVisual(item) {
 function FilesView({
   items, loading, uploadFile, navigateTo, crumbs, onRowSelect,
   onRowContextMenu, onDropOnFolder, onDragStartRow, searchQuery,
-  onSearchQueryChange, selectedItems, onNewFolder, onNewFile, onHeaderAction, copiedUrl, downloading,
+  onSearchQueryChange, selectedItems, onNewFolder, onNewFile, onHeaderAction, copiedUrl, downloading, ready, focusFile,
 }) {
   const { t, language } = useI18n();
+  const tableRef = useRef(null);
+  useEffect(() => {
+    if (!focusFile || loading) return;
+    const row = Array.from(tableRef.current?.querySelectorAll('[data-resource-url]') || [])
+      .find(item => item.dataset.resourceUrl === focusFile);
+    row?.scrollIntoView?.({ block: 'nearest' });
+  }, [focusFile, items, loading]);
   const primary = items.find(item => selectedItems.has(item.url));
   const linkCopied = Boolean(primary && selectedItems.size === 1 && copiedUrl === primary.url);
   const selection = [
@@ -320,13 +329,13 @@ function FilesView({
             value={searchQuery} onChange={event => onSearchQueryChange(event.target.value)} />
         </label>
         <div className="sdm-create-actions">
-          <button type="button" onClick={onNewFolder} className="sdm-button" title={t("New folder")}>
+          <button type="button" onClick={onNewFolder} disabled={!ready} className="sdm-button" title={t("New folder")}>
             <FontAwesomeIcon icon={faFolderPlus} /><span>{t("New folder")}</span>
           </button>
-          <button type="button" onClick={onNewFile} className="sdm-button" title={t("New file")}>
+          <button type="button" onClick={onNewFile} disabled={!ready} className="sdm-button" title={t("New file")}>
             <FontAwesomeIcon icon={faFileCirclePlus} /><span>{t("New file")}</span>
           </button>
-          <button type="button" onClick={uploadFile} className="sdm-button sdm-button--primary" title={t("Upload file")}>
+          <button type="button" onClick={uploadFile} disabled={!ready} className="sdm-button sdm-button--primary" title={t("Upload file")}>
             <FontAwesomeIcon icon={faUpload} /><span>{t("Upload")}</span>
           </button>
         </div>
@@ -362,7 +371,7 @@ function FilesView({
         </div>
       </div>
       {loading ? <ContentLoadingState /> : (
-        <div className="file-table-container">
+        <div className="file-table-container" ref={tableRef}>
           <table className="file-table" aria-label={t("Files and folders")}>
             <thead><tr><th scope="col">{t("Name")}</th><th scope="col">{t("Type")}</th><th scope="col">{t("Size")}</th><th scope="col">{t("Last Modified")}</th></tr></thead>
             <tbody>
@@ -371,7 +380,7 @@ function FilesView({
                 const visual = fileVisual(item);
                 const selected = selectedItems.has(url);
                 return (
-                  <tr key={url} draggable={!isFolder} className={selected ? "row-selected" : ""}
+                  <tr key={url} data-resource-url={url} draggable={!isFolder} className={selected ? "row-selected" : ""}
                     onDragStart={event => onDragStartRow(item, event)}
                     onContextMenu={event => onRowContextMenu(item, event)}
                     onDragOver={event => { if (isFolder) event.preventDefault(); }}
@@ -414,13 +423,20 @@ function FilesView({
   );
 }
 
-export default function DataManager({ webId, headerUser, onLogout, headerLanguage }) {
+export default function DataManager({ webId, headerUser, onLogout, headerLanguage, uri }) {
   const { t } = useI18n();
+  const [navigationSearch, setNavigationSearch] = useState(() => window.location.search);
+  useEffect(() => {
+    const update = () => setNavigationSearch(window.location.search);
+    window.addEventListener('popstate', update);
+    return () => window.removeEventListener('popstate', update);
+  }, []);
   const [currentUrl, setCurrentUrl] = useState("");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItems, setSelectedItems] = useState(new Set());
+  const [linkedFile, setLinkedFile] = useState(null);
   const [copiedLink, setCopiedLink] = useState(null);
   const [downloadProgress, setDownloadProgress] = useState(null);
   const downloadControllerRef = useRef(null);
@@ -497,7 +513,7 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
   };
 
   const loadItems = useCallback(async (url, options = {}) => {
-    const { commitUrl = false, reportError = true } = options;
+    const { commitUrl = false, reportError = true, focusFile = null } = options;
     const requestId = loadRequestIdRef.current + 1;
     loadRequestIdRef.current = requestId;
     loadAbortControllerRef.current?.abort();
@@ -550,7 +566,10 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
       }
       if (commitUrl) setCurrentUrl(url);
       setItems(itemInfos);
-      setSelectedItems(new Set());
+      const focused = focusFile ? itemInfos.find(item => item.url === focusFile && !item.isFolder) : null;
+      setSelectedItems(new Set(focused ? [focused.url] : []));
+      setLinkedFile(focused?.url || null);
+      if (focusFile && !focused) showAlert("The linked file is not listed in this folder. It may have been moved or is not accessible.");
       lastSelectedIndexRef.current = null;
       return true;
     } catch (error) {
@@ -575,32 +594,35 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
   }, [showAlert]);
 
   useEffect(() => {
-    if (!webId) {
-      loadRequestIdRef.current += 1;
-      loadAbortControllerRef.current?.abort();
-      loadAbortControllerRef.current = null;
-      rootUrlRef.current = "";
-      setCurrentUrl("");
-      setItems([]);
-      setLoading(false);
-      return undefined;
+    const controller = new AbortController();
+    loadRequestIdRef.current += 1;
+    loadAbortControllerRef.current?.abort();
+    rootUrlRef.current = "";
+    setCurrentUrl(""); setItems([]); setSelectedItems(new Set()); setLinkedFile(null);
+    setPreviewItem(null); setPreviewContent(""); setSearchQuery("");
+    setAlertOpen(false); setLoading(Boolean(webId));
+    setFolderModalOpen(false); setNewFileOpen(false); setShareModalOpen(false);
+    setRenameModalOpen(false); setMoveCopyOpen(false); setContextMenu(null); setBulkDeleteOpen(false);
+    if (webId) {
+      (async () => {
+        const target = uri === undefined ? uriFromSearch(navigationSearch) : uri;
+        const location = await resolvePodNavigation({ webId, uri: target, fetcher: noCacheFetch, signal: controller.signal });
+        if (controller.signal.aborted) return;
+        rootUrlRef.current = location.rootUrl;
+        await loadItems(location.containerUrl, { commitUrl: true, focusFile: location.fileUrl });
+      })().catch(error => {
+        if (!controller.signal.aborted && !isAbortError(error)) {
+          setLoading(false); showAlert(navigationErrorMessage(error));
+        }
+      });
     }
-    const url = new URL(webId);
-    const segments = url.pathname.split("/").filter(Boolean);
-    const profileIndex = segments.indexOf("profile");
-    const baseSegments = profileIndex > -1 ? segments.slice(0, profileIndex) : segments;
-    const basePath = baseSegments.length ? `/${baseSegments.join("/")}/` : "/";
-    const rootUrl = `${url.origin}${basePath}`;
-    rootUrlRef.current = rootUrl;
-    setItems([]);
-    setCurrentUrl(rootUrl);
-    loadItems(rootUrl);
     return () => {
+      controller.abort();
       loadRequestIdRef.current += 1;
       loadAbortControllerRef.current?.abort();
       loadAbortControllerRef.current = null;
     };
-  }, [webId, loadItems]);
+  }, [webId, uri, navigationSearch, loadItems, showAlert]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -616,6 +638,7 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
     };
     const dropHandler = async (e) => {
       preventDefaults(e);
+      if (!currentUrl) return;
       const files = e.dataTransfer.files;
       const uploadPromises = Array.from(files).map(async (file) => {
         const targetUrl = currentUrl + file.name;
@@ -651,7 +674,7 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
 
   const computeCrumbs = () => {
     const rootUrl = rootUrlRef.current;
-    if (!rootUrl) return [];
+    if (!rootUrl || !currentUrl) return [];
     const url = new URL(currentUrl);
     const root = new URL(rootUrl);
     const relative = url.pathname.replace(root.pathname, "");
@@ -1066,7 +1089,7 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
       nameLower.endsWith(".acl") ||
       nameLower.endsWith(".acr") ||
       nameLower.endsWith(".meta");
-    if (isHidden) return false;
+    if (isHidden && item.url !== linkedFile) return false;
     if (searchQuery && !nameLower.includes(searchQuery.toLowerCase())) return false;
     return true;
   });
@@ -1085,6 +1108,7 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
           <FilesView
             items={sortedItems}
             loading={loading}
+            ready={Boolean(currentUrl) && !loading}
             uploadFile={uploadFile}
             navigateTo={navigateTo}
             crumbs={computeCrumbs()}
@@ -1147,6 +1171,7 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             selectedItems={selectedItems}
+            focusFile={linkedFile}
             copiedUrl={copiedLink?.url}
             downloading={Boolean(downloadProgress)}
             onNewFolder={() => setFolderModalOpen(true)}

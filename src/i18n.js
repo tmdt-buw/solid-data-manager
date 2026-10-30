@@ -15,6 +15,18 @@ export const LANGUAGE_EVENT = "solid-dataspace-language-change";
 export const LANGUAGE_MESSAGE_TYPE = "solid-dataspace-language-change";
 
 const enToDe = {
+  "Use an absolute HTTP or HTTPS URL for uri.": "Bitte für uri eine vollständige HTTP- oder HTTPS-Adresse verwenden.",
+  "Use a resource URL without credentials or query parameters.": "Bitte eine Ressourcenadresse ohne Zugangsdaten oder Abfrageparameter verwenden.",
+  "Provide exactly one uri parameter.": "Bitte genau einen uri-Parameter angeben.",
+  "The resource redirected to a different location. Open its direct URL instead.": "Die Ressource wurde an eine andere Adresse weitergeleitet. Bitte ihre direkte Adresse öffnen.",
+  "The Pod storage could not be identified. Check the profile storage links or the server storage headers.": "Der Pod-Speicher konnte nicht erkannt werden. Bitte die Storage-Verweise im Profil oder die Storage-Header des Servers prüfen.",
+  "The WebID profile could not be read. Please try again.": "Das WebID-Profil konnte nicht gelesen werden. Bitte erneut versuchen.",
+  "No Pod storage is linked from this WebID profile.": "In diesem WebID-Profil ist kein Pod-Speicher verknüpft.",
+  "Access denied (403). You do not have permission to open this resource.": "Zugriff verweigert (403). Dir fehlt die Berechtigung, diese Ressource zu öffnen.",
+  "Resource not found (404). It may have been moved or deleted.": "Ressource nicht gefunden (404). Sie wurde möglicherweise verschoben oder gelöscht.",
+  "The linked file is not listed in this folder. It may have been moved or is not accessible.": "Die verlinkte Datei ist in diesem Ordner nicht aufgeführt. Sie wurde möglicherweise verschoben oder ist nicht zugänglich.",
+  "The linked resource could not be opened.": "Die verlinkte Ressource konnte nicht geöffnet werden.",
+
   "Folder rename is in progress. Resume it in Data Manager.": "Eine Ordnerumbenennung läuft noch. Setze sie im ursprünglichen Browser im Data Manager fort.",
   "Folder rename coordination failed.": "Die Abstimmung der Ordnerumbenennung ist fehlgeschlagen.",
   "Invalid rename source.": "Der Ausgangsordner ist ungültig.",

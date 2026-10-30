@@ -1,4 +1,5 @@
 import { Session } from "@inrupt/solid-client-authn-browser";
+import { restoreLoginTarget } from "./navigationTarget";
 
 const STORAGE_PREFIX = "solid-data-manager:";
 const storageKey = (key) => `${STORAGE_PREFIX}${key}`;
@@ -44,7 +45,10 @@ export const setSession = (nextSession) => {
 };
 
 export async function restoreSession() {
+  const params = new URLSearchParams(window.location.search);
+  const isCallback = params.has('code') && params.has('state');
   await session.handleIncomingRedirect({ restorePreviousSession: true });
+  if (session.info.isLoggedIn) restoreLoginTarget(isCallback);
   return session;
 }
 

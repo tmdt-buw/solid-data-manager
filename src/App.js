@@ -6,6 +6,7 @@ import {
   getUrl,
 } from "@inrupt/solid-client";
 import session from "./solidSession";
+import { rememberLoginTarget, clearLoginTarget } from "./navigationTarget";
 import "./App.css";
 import DataManager from "./components/DataManager";
 import LoginScreen from "./components/LoginScreen";
@@ -110,12 +111,13 @@ const App = () => {
     if (!issuer) return;
     await session.login({
       oidcIssuer: issuer,
-      redirectUrl: window.location.href,
+      redirectUrl: rememberLoginTarget(),
       clientName: "Solid Data Manager",
     });
   };
 
   const handleLogout = async () => {
+    clearLoginTarget();
     try {
       await session.logout();
     } finally {

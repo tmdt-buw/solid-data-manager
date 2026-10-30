@@ -14,6 +14,37 @@ Solid Data Manager is a standalone React application for managing files in a Sol
 - Solid authentication integration (Inrupt client libraries)
 - SPA routing with static hosting support (Nginx)
 
+## Direct links and Pod discovery
+
+Open a container or file with `?uri=` containing an absolute URL encoded with
+`encodeURIComponent`, for example:
+
+```js
+const link = new URL('https://your-app.example/solid-data-manager/');
+link.searchParams.set('uri', 'https://storage.example/alice/documents/report.csv');
+```
+
+A container opens directly. A file opens its containing folder and selects the
+file; use **Preview** or **Download** as usual. Existing Pod permissions apply.
+Opening a link only reads resources; it never creates containers or changes ACLs.
+The destination is kept in the login return URL, with a tab-local callback fallback
+that expires after 30 minutes. Invalid or inaccessible targets produce an error.
+
+Pod discovery reads `pim:storage` from the WebID profile (including alternate
+profiles), so the WebID and storage may use different hosts. With multiple Pods,
+the link chooses the containing storage; without a link the first advertised
+storage is opened. Links outside those storages discover the root using the
+server's `Link: <http://www.w3.org/ns/pim/space#Storage>; rel="type"` header on
+ancestor containers. Existing `/profile/` WebIDs without storage links retain
+the legacy root fallback. Profile failures do not silently choose an identity
+server as storage. URLs must use HTTP(S), without credentials or query parameters;
+RDF fragments are removed when opening the document. Containers normally end in
+`/`; a server redirect or container type header also identifies a slashless URL.
+
+Embedded callers can pass `uri` to `<DataManagerEmbed webId={webId} uri={url} />`.
+Omitting it reads the browser's `?uri=` parameter; `uri={null}` opens the default
+Pod. Browser history changes to `?uri=` are supported.
+
 ## Downloads
 
 Select a folder and choose **Download** in the selection toolbar or context menu
