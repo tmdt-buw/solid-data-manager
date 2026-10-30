@@ -34,6 +34,16 @@ export function createRenameJournal(webId) {
     }
   };
 }
+export function renameBackupName(record) {
+  let name = 'folder';
+  try { name = decodeURIComponent(new URL(record.source).pathname.split('/').filter(Boolean).pop() || '') || name; } catch { /* Use the fallback name. */ }
+  // Strip control characters as well as platform-specific filename separators.
+  // eslint-disable-next-line no-control-regex
+  name = name.replace(/[<>:"/\\|?*\x00-\x1f\x7f]/g, '_').replace(/[. ]+$/g, '').slice(0, 80) || 'folder';
+  const date = /^\d{4}-\d{2}-\d{2}/.exec(record.createdAt || '')?.[0] || 'undated';
+  return `${name}-backup-${date}.zip`;
+}
+
 export function downloadRenameBackup(record) {
   const manifest = { id: record.id, createdAt: record.createdAt, source: record.source, target: record.target, resources: [], references: [], ancestors: [] };
   const files = {};
@@ -47,5 +57,5 @@ export function downloadRenameBackup(record) {
     });
   }
   files['manifest.json'] = strToU8(JSON.stringify(manifest, null, 2));
-  saveDownload(new Blob([zipSync(files, { level: 6 })], { type: 'application/zip' }), `folder-rename-backup-${record.id}.zip`);
+  saveDownload(new Blob([zipSync(files, { level: 6 })], { type: 'application/zip' }), renameBackupName(record));
 }

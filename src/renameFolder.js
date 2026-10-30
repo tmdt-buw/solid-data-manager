@@ -17,7 +17,7 @@ export function folderRenameTarget(source, parentUrl, name, podRoot) {
   return target;
 }
 
-export async function renameFolder({ source, target, podRoot, webId, fetcher, journal, worker, onProgress = () => {}, hash = defaultHash, record: resume, backup }) {
+export async function renameFolder({ source, target, podRoot, webId, fetcher, journal, worker, onProgress = () => {}, hash = defaultHash, record: resume }) {
   let total = 0, count = 0;
   const request = async (url, init = {}) => {
     const response = await fetcher(url, { ...init, signal: AbortSignal.timeout(60000), redirect: 'error', cache: 'no-store' });
@@ -130,8 +130,6 @@ export async function renameFolder({ source, target, podRoot, webId, fetcher, jo
       await scan(podRoot + 'connections/test/', false);
       record = { ...record, resources, ancestors, references, phase: 'backed-up' };
       await save();
-      // The archive is additional to the durable IndexedDB journal.
-      if (backup) await backup(record);
     }
     if (record.phase === 'backed-up') {
       for (const r of record.resources) { await verifyOriginal(r); await verifyAcl(r); }

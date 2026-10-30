@@ -820,7 +820,7 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
         const record = recovery || pending.find(row => row.source === url && row.target === target);
         if (pending.some(row => row.id !== record?.id)) throw Error("Finish the pending folder rename first.");
         const completed = await renameFolder({ source: url, target, podRoot: rootUrlRef.current, webId, fetcher: noCacheFetch,
-          journal, worker, record, onProgress: setRenameProgress, backup: downloadRenameBackup });
+          journal, worker, record, onProgress: setRenameProgress });
         await loadItems(recovery ? new URL("..", target).href : currentUrl, { commitUrl: Boolean(recovery) });
         setLastRenameBackup(completed);
       } else {
