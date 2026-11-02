@@ -1,13 +1,13 @@
 {
   "name": "@hoelk-f/solid-data-manager",
-  "version": "0.4.28",
+  "version": "0.4.29",
   "license": "Apache-2.0",
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.0.0",
     "@fortawesome/free-solid-svg-icons": "^7.0.0",
     "@fortawesome/react-fontawesome": "^0.2.3",
     "@inrupt/solid-client": "^2.1.2",
-    "@inrupt/solid-client-authn-browser": "^3.1.0",
+    "@inrupt/solid-client-authn-browser": "5.0.3",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
@@ -79,5 +79,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "engines": {
+    "node": "^22.0.0 || ^24.0.0"
   }
 }
