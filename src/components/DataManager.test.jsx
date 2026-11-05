@@ -611,3 +611,47 @@ test('keeps breadcrumbs safe while storage discovery has finished but the first 
   await act(async () => { request.resolve(datasetWith()); await request.promise; });
   expect(await screen.findByRole('table')).toBeInTheDocument();
 });
+
+test('drag-and-drop reports each failure instead of silently swallowing it', async () => {
+  getSolidDataset.mockResolvedValue(datasetWith());
+  session.fetch.mockImplementation(async (url, init) => init.method === 'PUT'
+    ? { ok: false, status: 403, headers: new Headers() } : mockHeadResponse());
+  render(<DataManager webId={WEB_ID} />);
+  await waitFor(() => expect(screen.getByTitle('Upload file')).toBeEnabled());
+  fireEvent.drop(window, { dataTransfer: { files: [new File(['data'], 'denied.csv')] } });
+  expect(await screen.findByText('Upload denied (403). You do not have write permission for this folder.')).toBeInTheDocument();
+  expect(screen.getByText('denied.csv')).toBeInTheDocument();
+  expect(saveAclFor).not.toHaveBeenCalled();
+  expect(deleteFile).not.toHaveBeenCalled();
+});
+
+test('selected uploads show progress, serialize the batch and verify saved sizes', async () => {
+  getSolidDataset.mockResolvedValue(datasetWith());
+  const pending = deferred(); let first = true;
+  session.fetch.mockImplementation(async (url, init) => {
+    if (init.method === 'PUT') {
+      if (first) { first = false; return pending.promise; }
+      return { ok: true, status: 201, headers: new Headers() };
+    }
+    return { ok: true, status: 200, headers: new Headers({ 'Content-Length': '4' }) };
+  });
+  render(<DataManager webId={WEB_ID} />);
+  await waitFor(() => expect(screen.getByTitle('Upload file')).toBeEnabled());
+  let picker;
+  const originalCreate = document.createElement.bind(document);
+  const createSpy = jest.spyOn(document, 'createElement').mockImplementation((...args) => {
+    const element = originalCreate(...args);
+    if (args[0] === 'input') { picker = element; element.click = jest.fn(); }
+    return element;
+  });
+  fireEvent.click(screen.getByTitle('Upload file')); createSpy.mockRestore();
+  expect(picker.multiple).toBe(true);
+  act(() => { picker.onchange({ target: { files: [new File(['data'], 'one.csv'), new File(['data'], 'two.csv')] } }); });
+  expect(await screen.findByText('Uploading...')).toBeInTheDocument();
+  expect(screen.getByTitle('Upload file')).toBeDisabled();
+  expect(session.fetch.mock.calls.filter(([,options]) => options.method === 'PUT')).toHaveLength(1);
+  await act(async () => pending.resolve({ ok: true, status: 201, headers: new Headers() }));
+  await waitFor(() => expect(screen.getAllByText('Upload completed and size verified.')).toHaveLength(2));
+  expect(session.fetch.mock.calls.filter(([,options]) => options.method === 'PUT')).toHaveLength(2);
+  expect(saveAclFor).not.toHaveBeenCalled();
+});

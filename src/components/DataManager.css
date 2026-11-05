@@ -321,3 +321,8 @@
 .sdm-rename-recovery > div { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; margin-top: .75rem; }
 .sdm-rename-recovery span { flex: 1 1 220px; }
 .sdm-rename-error { color: #a32c20; overflow-wrap: anywhere; }
+
+.sdm-upload-status { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 0; color: #18314f; }
+.sdm-upload-status progress { width: 100px; flex-shrink: 0; accent-color: #1769e8; }
+.sdm-upload-status > span { flex: 1; min-width: 160px; overflow-wrap: anywhere; }
+.sdm-upload-results { display: grid; gap: 14px; overflow-wrap: anywhere; }

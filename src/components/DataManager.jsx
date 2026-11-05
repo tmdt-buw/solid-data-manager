@@ -17,6 +17,7 @@ import {
   saveAclFor,
 } from "@inrupt/solid-client";
 import session from "../solidSession";
+import { uploadFileVerified, uploadErrorMessage } from "../uploadFiles";
 import { uriFromSearch } from "../navigationTarget";
 import { resolvePodNavigation, navigationErrorMessage } from "../podNavigation";
 import { renameFolder, folderRenameTarget } from "../renameFolder";
@@ -300,7 +301,7 @@ function fileVisual(item) {
 function FilesView({
   items, loading, uploadFile, navigateTo, crumbs, onRowSelect,
   onRowContextMenu, onDropOnFolder, onDragStartRow, searchQuery,
-  onSearchQueryChange, selectedItems, onNewFolder, onNewFile, onHeaderAction, copiedUrl, downloading, ready, focusFile,
+  onSearchQueryChange, selectedItems, onNewFolder, onNewFile, onHeaderAction, copiedUrl, downloading, ready, focusFile, uploadProgress, onCancelUpload,
 }) {
   const { t, language } = useI18n();
   const tableRef = useRef(null);
@@ -335,11 +336,16 @@ function FilesView({
           <button type="button" onClick={onNewFile} disabled={!ready} className="sdm-button" title={t("New file")}>
             <FontAwesomeIcon icon={faFileCirclePlus} /><span>{t("New file")}</span>
           </button>
-          <button type="button" onClick={uploadFile} disabled={!ready} className="sdm-button sdm-button--primary" title={t("Upload file")}>
+          <button type="button" onClick={uploadFile} disabled={!ready || Boolean(uploadProgress)} className="sdm-button sdm-button--primary" title={t("Upload file")}>
             <FontAwesomeIcon icon={faUpload} /><span>{t("Upload")}</span>
           </button>
         </div>
       </div>
+      {uploadProgress && <div className="sdm-upload-status" role="status" aria-live="polite">
+        <progress aria-label={t(uploadProgress.phase)} />
+        <span><strong>{t(uploadProgress.phase)}</strong> <span translate="no">{uploadProgress.name}</span> ({uploadProgress.index}/{uploadProgress.total})</span>
+        <button type="button" className="sdm-button" onClick={onCancelUpload}>{t("Cancel")}</button>
+      </div>}
       <div className="sdm-location-bar">
         <nav className="crumb sdm-breadcrumbs" aria-label={t("Folder navigation")}>
           {crumbs.map((crumb, index) => (
@@ -439,6 +445,9 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
   const [linkedFile, setLinkedFile] = useState(null);
   const [copiedLink, setCopiedLink] = useState(null);
   const [downloadProgress, setDownloadProgress] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(null);
+  const uploadControllerRef = useRef(null);
+  useEffect(() => () => { uploadControllerRef.current?.abort(); }, [webId]);
   const downloadControllerRef = useRef(null);
   useEffect(() => () => downloadControllerRef.current?.abort(), [webId]);
   const [previewItem, setPreviewItem] = useState(null);
@@ -478,7 +487,7 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
     return () => { active = false; };
   }, [webId]);
   useEffect(() => {
-    const preventUnload = event => { if (renameBusy.current) { event.preventDefault(); event.returnValue = ""; } };
+    const preventUnload = event => { if (renameBusy.current || uploadControllerRef.current) { event.preventDefault(); event.returnValue = ""; } };
     window.addEventListener("beforeunload", preventUnload);
     return () => window.removeEventListener("beforeunload", preventUnload);
   }, []);
@@ -631,40 +640,60 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
     return () => window.removeEventListener("click", closeMenu);
   }, [contextMenu]);
 
-  useEffect(() => {
-    const preventDefaults = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-    const dropHandler = async (e) => {
-      preventDefaults(e);
-      if (!currentUrl) return;
-      const files = e.dataTransfer.files;
-      const uploadPromises = Array.from(files).map(async (file) => {
-        const targetUrl = currentUrl + file.name;
+  const uploadFiles = useCallback(async (files) => {
+    if (!currentUrl || !files.length || uploadControllerRef.current) return;
+    const controller = new AbortController();
+    uploadControllerRef.current = controller;
+    const outcomes = [];
+    try {
+      for (const [index, file] of Array.from(files).entries()) {
+        if (controller.signal.aborted) break;
+        const updatePhase = phase => setUploadProgress({ name: file.name, index: index + 1, total: files.length, phase });
         try {
-          await overwriteFile(targetUrl, file, {
-            contentType: file.type || guessContentType(file.name),
-            fetch: noCacheFetch,
-          });
-        } catch {}
-      });
-      await Promise.all(uploadPromises);
-      loadItems(currentUrl);
+          const result = await uploadFileVerified({ folderUrl: currentUrl, file,
+            contentType: file.type || guessContentType(file.name), fetcher: noCacheFetch,
+            signal: controller.signal, onPhase: updatePhase });
+          outcomes.push({ name: file.name, message: result.verified ? "Upload completed and size verified." : "Upload completed, but its size could not be verified." });
+        } catch (error) {
+          if (controller.signal.aborted) break;
+          outcomes.push({ name: file.name, message: uploadErrorMessage(error) });
+        }
+      }
+      if (!controller.signal.aborted) {
+        await loadItems(currentUrl);
+        showAlert(<span className="sdm-upload-results">{outcomes.map((result, index) =>
+          <span key={index}><strong translate="no">{result.name}</strong><br />{t(result.message)}</span>)}</span>);
+      }
+    } finally {
+      if (uploadControllerRef.current === controller) {
+        uploadControllerRef.current = null;
+        setUploadProgress(null);
+      }
+    }
+  }, [currentUrl, loadItems, showAlert, t]);
+
+  const cancelUpload = () => {
+    uploadControllerRef.current?.abort();
+    showAlert("Upload cancelled. Files already completed are retained. Check the destination before trying again.");
+    loadItems(currentUrl);
+  };
+
+  useEffect(() => {
+    const preventDefaults = e => { e.preventDefault(); e.stopPropagation(); };
+    const dropHandler = e => {
+      preventDefaults(e);
+      uploadFiles(Array.from(e.dataTransfer?.files || []));
     };
-    ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) =>
-      window.addEventListener(eventName, preventDefaults, false)
-    );
+    ["dragenter", "dragover", "dragleave", "drop"].forEach(name => window.addEventListener(name, preventDefaults, false));
     window.addEventListener("drop", dropHandler);
     return () => {
-      ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) =>
-        window.removeEventListener(eventName, preventDefaults, false)
-      );
+      ["dragenter", "dragover", "dragleave", "drop"].forEach(name => window.removeEventListener(name, preventDefaults, false));
       window.removeEventListener("drop", dropHandler);
     };
-  }, [currentUrl, loadItems]);
+  }, [uploadFiles]);
 
   const navigateTo = (url) => {
+    if (uploadControllerRef.current) return;
     const nextUrl = url.endsWith("/") ? url : url + "/";
     setSelectedItems(new Set());
     lastSelectedIndexRef.current = null;
@@ -871,26 +900,13 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
     catch (error) { setResumeError(error.message); }
   };
 
-  const uploadFile = async () => {
+  const uploadFile = () => {
     const input = document.createElement("input");
     input.type = "file";
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      const targetUrl = currentUrl + file.name;
-      try {
-        await overwriteFile(targetUrl, file, {
-          contentType: file.type || guessContentType(file.name),
-          fetch: noCacheFetch,
-        });
-        await loadItems(currentUrl);
-      } catch {
-        showAlert("Upload failed.");
-      }
-    };
+    input.multiple = true;
+    input.onchange = event => uploadFiles(Array.from(event.target.files || []));
     input.click();
   };
-
-  
 
   const downloadFiles = async (urls) => {
     if (!urls.length || downloadControllerRef.current) return;
@@ -1110,6 +1126,8 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
             loading={loading}
             ready={Boolean(currentUrl) && !loading}
             uploadFile={uploadFile}
+            uploadProgress={uploadProgress}
+            onCancelUpload={cancelUpload}
             navigateTo={navigateTo}
             crumbs={computeCrumbs()}
             onRowSelect={(item, index, event) => {

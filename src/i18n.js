@@ -15,6 +15,21 @@ export const LANGUAGE_EVENT = "solid-dataspace-language-change";
 export const LANGUAGE_MESSAGE_TYPE = "solid-dataspace-language-change";
 
 const enToDe = {
+  "Uploading...": "Wird hochgeladen...",
+  "Verifying uploaded size...": "Gespeicherte Dateigröße wird geprüft...",
+  "Upload completed and size verified.": "Upload abgeschlossen und Dateigröße geprüft.",
+  "Upload completed, but its size could not be verified.": "Upload abgeschlossen. Die gespeicherte Dateigröße konnte nicht geprüft werden.",
+  "Upload cancelled. Files already completed are retained. Check the destination before trying again.": "Upload abgebrochen. Bereits vollständig übertragene Dateien bleiben erhalten. Prüfe den Zielordner vor einem erneuten Versuch.",
+  "The saved file size does not match the original. Keep your original file and upload it again.": "Die gespeicherte Dateigröße stimmt nicht mit dem Original überein. Bewahre die Originaldatei auf und lade sie erneut hoch.",
+  "Upload denied (403). You do not have write permission for this folder.": "Upload verweigert (403). Dir fehlt die Schreibberechtigung für diesen Ordner.",
+  "The Pod server rejected the file size (413). Contact the server administrator.": "Der Pod-Server hat die Dateigröße abgelehnt (413). Wende dich an die Serveradministration.",
+  "The upload timed out. Check the saved file before trying again.": "Zeitüberschreitung beim Upload. Prüfe die gespeicherte Datei vor einem erneuten Versuch.",
+  "The Pod has insufficient storage (507).": "Der Pod hat nicht genügend freien Speicherplatz (507).",
+  "The destination folder is unavailable or has changed. Refresh and try again.": "Der Zielordner ist nicht verfügbar oder wurde geändert. Aktualisiere die Ansicht und versuche es erneut.",
+  "The file changed during upload. Refresh before trying again.": "Die Datei wurde während des Uploads geändert. Aktualisiere die Ansicht vor einem erneuten Versuch.",
+  "The Pod server could not complete the upload. Check the saved file before trying again.": "Der Pod-Server konnte den Upload nicht abschließen. Prüfe die gespeicherte Datei vor einem erneuten Versuch.",
+  "The upload could not be confirmed. Check your connection and the saved file before trying again.": "Der Upload konnte nicht bestätigt werden. Prüfe die Verbindung und die gespeicherte Datei vor einem erneuten Versuch.",
+
   "Use an absolute HTTP or HTTPS URL for uri.": "Bitte für uri eine vollständige HTTP- oder HTTPS-Adresse verwenden.",
   "Use a resource URL without credentials or query parameters.": "Bitte eine Ressourcenadresse ohne Zugangsdaten oder Abfrageparameter verwenden.",
   "Provide exactly one uri parameter.": "Bitte genau einen uri-Parameter angeben.",
