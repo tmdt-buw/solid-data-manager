@@ -655,3 +655,95 @@ test('selected uploads show progress, serialize the batch and verify saved sizes
   expect(session.fetch.mock.calls.filter(([,options]) => options.method === 'PUT')).toHaveLength(2);
   expect(saveAclFor).not.toHaveBeenCalled();
 });
+
+
+describe("authenticated media previews", () => {
+  const oldCreate = URL.createObjectURL;
+  const oldRevoke = URL.revokeObjectURL;
+  beforeEach(() => {
+    URL.createObjectURL = jest.fn(() => "blob:private-preview");
+    URL.revokeObjectURL = jest.fn();
+  });
+  afterAll(() => {
+    URL.createObjectURL = oldCreate;
+    URL.revokeObjectURL = oldRevoke;
+  });
+  function mediaResponse(type = "application/octet-stream") {
+    return { ok: true, headers: new Headers({ "Content-Type": type }),
+      blob: jest.fn().mockResolvedValue(new Blob([new Uint8Array([137, 80, 78, 71])], { type })),
+      text: jest.fn() };
+  }
+  async function open(name, response) {
+    const url = ROOT_URL + name;
+    getSolidDataset.mockResolvedValue(datasetWith(url));
+    session.fetch.mockImplementation((_url, init = {}) => init.method === "HEAD" ? Promise.resolve(mockHeadResponse()) : Promise.resolve(response));
+    const view = render(<DataManager webId={WEB_ID} />);
+    fireEvent.click((await screen.findByText(name)).closest("tr"));
+    await act(async () => { fireEvent.click(screen.getByTitle("Preview")); });
+    return view;
+  }
+  test("renders private PNG bytes as an image and releases its Blob URL on close", async () => {
+    const response = mediaResponse();
+    await open("photo.PNG", response);
+    const image = await screen.findByRole("img", { name: "photo.PNG" });
+    expect(image).toHaveAttribute("src", "blob:private-preview");
+    expect(URL.createObjectURL.mock.calls[0][0].type).toBe("image/png");
+    expect(response.text).not.toHaveBeenCalled();
+    expect(session.fetch).toHaveBeenCalledWith(ROOT_URL + "photo.PNG", expect.objectContaining({ signal: expect.any(AbortSignal), cache: "no-store" }));
+    expect(screen.queryByRole("button", { name: "Edit file" })).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Preview" })).getByRole("button", { name: "Close" }));
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:private-preview");
+    expect(overwriteFile).not.toHaveBeenCalled();
+    expect(saveAclFor).not.toHaveBeenCalled();
+  });
+  test.each([["route.mp4", "application/octet-stream"], ["route.webm", "video/webm"], ["recording", "video/mp4"]])("offers video controls for %s without treating it as editable text", async (name, type) => {
+    const response = mediaResponse(type);
+    const { container, unmount } = await open(name, response);
+    await waitFor(() => expect(container.querySelector("video")).toBeInTheDocument());
+    const video = container.querySelector("video");
+    expect(video).toHaveAttribute("src", "blob:private-preview");
+    expect(video).toHaveAttribute("controls");
+    expect(video).toHaveAttribute("playsinline");
+    expect(video).not.toHaveAttribute("autoplay");
+    expect(screen.queryByRole("button", { name: "Edit file" })).not.toBeInTheDocument();
+    expect(response.text).not.toHaveBeenCalled();
+    unmount();expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:private-preview");
+  });
+  test("explains unsupported codecs and retains the download action", async () => {
+    const { container } = await open("clip.mov", mediaResponse("video/quicktime"));
+    await waitFor(() => expect(container.querySelector("video")).toBeInTheDocument());
+    fireEvent.error(container.querySelector("video"));
+    expect(await screen.findByText("This browser cannot play this video format. Download it to open it in another application.")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Download" })).toBeEnabled();
+    expect(container.querySelector(".preview-code")).not.toBeInTheDocument();
+  });
+  test("aborts a closed preview and ignores its late media response when another file is opened", async () => {
+    const pending = deferred(), first = mediaResponse(), second = mediaResponse();
+    first.blob.mockReturnValue(pending.promise);
+    await open("first.png", first);
+    await waitFor(() => expect(first.blob).toHaveBeenCalled());
+    const signal = session.fetch.mock.calls.find(([,init]) => init.method !== "HEAD")[1].signal;
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+    expect(signal.aborted).toBe(true);
+    session.fetch.mockImplementation((_url, init = {}) => init.method === "HEAD" ? Promise.resolve(mockHeadResponse()) : Promise.resolve(second));
+    fireEvent.click(screen.getByTitle("Preview"));
+    await screen.findByRole("img", { name: "first.png" });
+    await act(async () => { pending.resolve(new Blob(["old media"])); await pending.promise; });
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("img", { name: "first.png" })).toHaveAttribute("src", "blob:private-preview");
+  });
+  test("does not offer to edit an error response after a denied preview", async () => {
+    await open("private.txt", { ok: false, status: 403, text: jest.fn() });
+    expect(await screen.findByText("Preview denied (403). You do not have read permission for this file.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit file" })).not.toBeInTheDocument();
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(overwriteFile).not.toHaveBeenCalled();
+  });
+  test("keeps unknown binary formats out of the text editor", async () => {
+    const response = mediaResponse("application/pdf");
+    await open("document.pdf", response);
+    expect(await screen.findByText("No preview is available for this file type. Download the file to open it.")).toBeInTheDocument();
+    expect(response.text).not.toHaveBeenCalled();
+    expect(response.blob).not.toHaveBeenCalled();
+  });
+});

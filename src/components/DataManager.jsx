@@ -56,6 +56,7 @@ import ConfirmModal from "./ConfirmModal";
 import { appVersion } from "../version";
 import { useI18n } from "../i18n";
 import { readCompressedJson } from "../readCompressedJson";
+import { previewFormat, readMediaPreview, previewErrorMessage } from "../filePreview";
 import { createFolderArchive, downloadFileBlob, downloadName, saveDownload, downloadErrorMessage } from "../downloadResources";
 
 const noCacheFetch = (input, init = {}) =>
@@ -205,7 +206,8 @@ function getItemType(item) {
   const ext = getExtension(item.name);
   if (!ext) return "Other";
   if (["json", "csv", "ttl"].includes(ext)) return ext.toUpperCase();
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) return "Image";
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", "bmp"].includes(ext)) return "Image";
+  if (["mp4", "m4v", "webm", "ogv", "mov", "avi", "mkv"].includes(ext)) return "Video";
   return ext.toUpperCase();
 }
 
@@ -452,6 +454,8 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
   useEffect(() => () => downloadControllerRef.current?.abort(), [webId]);
   const [previewItem, setPreviewItem] = useState(null);
   const [previewContent, setPreviewContent] = useState("");
+  const [previewKind, setPreviewKind] = useState(null);
+  const [previewMedia, setPreviewMedia] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewEditMode, setPreviewEditMode] = useState(false);
   const [previewEditableContent, setPreviewEditableContent] = useState("");
@@ -750,7 +754,7 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
   };
 
   const savePreviewEdits = async () => {
-    if (!previewItem || !isEditablePreview(previewItem)) return;
+    if (!previewItem || previewKind !== "text" || !isEditablePreview(previewItem)) return;
     setPreviewSaving(true);
     try {
       const contentType = guessContentType(previewItem.name, "text/plain");
@@ -1012,50 +1016,76 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
     }
   };
 
-  const loadPreview = useCallback(async (item) => {
-    if (!item || item.isFolder) return;
-    setPreviewLoading(true);
-    try {
-      const compressed = item.name.toLowerCase().endsWith('.json.gz');
-      const res = await noCacheFetch(item.url, compressed ? { headers: { Accept: 'application/gzip, application/x-gzip, application/octet-stream, application/json' } } : {});
-      if (!res.ok) throw new Error("Preview failed.");
-      const ext = getExtension(item.name);
-      if (compressed) {
-        const text = JSON.stringify(await readCompressedJson(res), null, 2);
-        setPreviewContent(text.length > 50000 ? text.slice(0, 50000) + '\n…' : text);
-        setPreviewEditableContent('');
-        setPreviewEditMode(false);
-        return;
-      }
-      const text = await res.text();
-      if (ext === "json") {
-        try {
-          const parsed = JSON.parse(text);
-          setPreviewContent(JSON.stringify(parsed, null, 2));
-          setPreviewEditableContent(JSON.stringify(parsed, null, 2));
-        } catch {
-          setPreviewContent(text);
-          setPreviewEditableContent(text);
-        }
-      } else {
-        const previewText = isEditablePreview(item) ? text : text.slice(0, 5000);
-        setPreviewContent(previewText);
-        setPreviewEditableContent(previewText);
-      }
-      setPreviewEditMode(false);
-    } catch {
-      setPreviewContent("No preview available.");
-      setPreviewEditableContent("");
-    } finally {
-      setPreviewLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (previewItem) {
-      loadPreview(previewItem);
-    }
-  }, [previewItem, loadPreview]);
+    const controller = new AbortController();
+    let active = true;
+    let objectUrl;
+    setPreviewContent("");
+    setPreviewEditableContent("");
+    setPreviewEditMode(false);
+    setPreviewKind(null);
+    setPreviewMedia(null);
+    setPreviewLoading(Boolean(previewItem));
+
+    const load = async () => {
+      try {
+        const compressed = previewItem.name.toLowerCase().endsWith(".json.gz");
+        const res = await noCacheFetch(previewItem.url, {
+          signal: controller.signal,
+          ...(compressed ? { headers: { Accept: 'application/gzip, application/x-gzip, application/octet-stream, application/json' } } : {}),
+        });
+        if (!res.ok) throw Object.assign(new Error("Preview failed."), { status: res.status });
+        if (!active) return;
+        if (compressed) {
+          const text = JSON.stringify(await readCompressedJson(res), null, 2);
+          if (!active) return;
+          setPreviewKind("text");
+          setPreviewContent(text.length > 50000 ? text.slice(0, 50000) + '\n…' : text);
+          return;
+        }
+        const format = previewFormat(previewItem.name, res.headers?.get('Content-Type') || '');
+        if (format.kind === 'image' || format.kind === 'video') {
+          // Authenticated fetch is essential for private Pod files. Media
+          // elements only see a local Blob URL, never an unauthenticated Pod URL.
+          const blob = await readMediaPreview(res, format.mime, controller.signal);
+          if (!active) return;
+          objectUrl = URL.createObjectURL(blob);
+          setPreviewMedia({ url: objectUrl, kind: format.kind });
+          setPreviewKind(format.kind);
+          return;
+        }
+        if (format.kind === 'unsupported') {
+          await res.body?.cancel().catch(() => {});
+          if (!active) return;
+          setPreviewKind('unsupported');
+          setPreviewContent('No preview is available for this file type. Download the file to open it.');
+          return;
+        }
+        let text = await res.text();
+        if (!active) return;
+        if (getExtension(previewItem.name) === 'json') {
+          try { text = JSON.stringify(JSON.parse(text), null, 2); } catch { /* Show invalid JSON as text. */ }
+        } else if (!isEditablePreview(previewItem)) {
+          text = text.slice(0, 5000);
+        }
+        setPreviewKind('text');
+        setPreviewContent(text);
+        setPreviewEditableContent(text);
+      } catch (error) {
+        if (!active || controller.signal.aborted) return;
+        setPreviewKind('error');
+        setPreviewContent(previewErrorMessage(error));
+      } finally {
+        if (active) setPreviewLoading(false);
+      }
+    };
+    if (previewItem && !previewItem.isFolder) load();
+    return () => {
+      active = false;
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [previewItem]);
 
   const normalizeFolderUrl = (url) => (url.endsWith("/") ? url : `${url}/`);
 
@@ -1350,6 +1380,7 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
         >
           <div
             className="modal-box preview-modal"
+            role="dialog" aria-modal="true" aria-label={t("Preview")}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="modal-header">
@@ -1375,6 +1406,19 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
               </div>
               {previewLoading ? (
                 <ContentLoadingState variant="preview" />
+              ) : previewKind === "image" ? (
+                <div className="preview-media-frame">
+                  <img className="preview-image" src={previewMedia.url} alt={previewItem.name}
+                    onError={() => { setPreviewKind("error"); setPreviewContent("This image could not be displayed. Download it to open it in another application."); }} />
+                </div>
+              ) : previewKind === "video" ? (
+                <div className="preview-media-frame preview-media-frame--video">
+                  <video className="preview-video" src={previewMedia.url} controls playsInline preload="metadata"
+                    aria-label={previewItem.name}
+                    onError={() => { setPreviewKind("error"); setPreviewContent("This browser cannot play this video format. Download it to open it in another application."); }} />
+                </div>
+              ) : previewKind === "error" || previewKind === "unsupported" ? (
+                <p className="preview-message" role="status">{t(previewContent)}</p>
               ) : previewEditMode ? (
                 <textarea
                   className="preview-editor"
@@ -1382,10 +1426,18 @@ export default function DataManager({ webId, headerUser, onLogout, headerLanguag
                   onChange={(event) => setPreviewEditableContent(event.target.value)}
                 />
               ) : (
-                <pre className="preview-code">{previewContent || "No preview available."}</pre>
+                <pre className="preview-code" translate="no">{previewContent || "No preview available."}</pre>
               )}
             </div>
-            {isEditablePreview(previewItem) && !previewLoading && (
+            {previewKind && previewKind !== "text" && !previewLoading && (
+              <div className="modal-footer">
+                <button type="button" className="btn btn-primary" disabled={Boolean(downloadProgress)}
+                  onClick={() => { const url = previewItem.url; setPreviewItem(null); downloadFiles([url]); }}>
+                  <FontAwesomeIcon icon={faDownload} /> {t("Download")}
+                </button>
+              </div>
+            )}
+            {previewKind === "text" && isEditablePreview(previewItem) && !previewLoading && (
               <div className="modal-footer">
                 {previewEditMode ? (
                   <>
